@@ -172,23 +172,26 @@ DISPLAY_NAMES = {
 # ── PM keyword filter ────────────────────────────────────────────────────────
 
 PM_TITLE_PATTERNS = [
-    r"product\s+manager",
-    r"product\s+management",
-    r"pm\b",
+    r"product\s+manag",                           # product manager / management
     r"product\s+lead",
     r"product\s+director",
-    r"director.*product",
+    r"(?:group|senior|staff|principal)\s+pm\b",   # prefixed PM abbreviations only
+    r"director.{0,30}product",                    # director of/for product (limited gap)
     r"head\s+of\s+product",
-    r"vp.*product",
-    r"group\s+pm",
-    r"senior\s+pm",
-    r"staff\s+pm",
-    r"principal\s+pm",
-    r"technical\s+program\s+manager",
-    r"tpm\b",
+    r"vp.{0,20}product",
+    r"vice\s+president.{0,20}product",
+]
+
+# Exclude non-PM roles that happen to contain "product" in the title
+PM_EXCLUDE_PATTERNS = [
+    r"product\s+(?:market|design|counsel|communi|account|legal|launch)",
+    r"(?:engineer|software|legal|video|sales).{0,25}product",
+    r"technical\s+program",
+    r"project\s+manag",
 ]
 
 PM_RE = re.compile("|".join(PM_TITLE_PATTERNS), re.IGNORECASE)
+PM_EXCLUDE_RE = re.compile("|".join(PM_EXCLUDE_PATTERNS), re.IGNORECASE)
 
 # ── Fit‑score keyword buckets (weight → list of patterns) ────────────────────
 
@@ -387,7 +390,7 @@ def scrape_greenhouse(company: str) -> list[dict]:
     jobs = []
     for j in data["jobs"]:
         title = j.get("title", "")
-        if not PM_RE.search(title):
+        if not PM_RE.search(title) or PM_EXCLUDE_RE.search(title):
             continue
         loc = j.get("location")
         location = loc.get("name", "") if isinstance(loc, dict) else str(loc or "")
@@ -415,7 +418,7 @@ def scrape_lever(company: str) -> list[dict]:
     jobs = []
     for j in data:
         title = j.get("text", "")
-        if not PM_RE.search(title):
+        if not PM_RE.search(title) or PM_EXCLUDE_RE.search(title):
             continue
         cats = j.get("categories", {})
         location = cats.get("location", "") or cats.get("allLocations", "")
@@ -446,7 +449,7 @@ def scrape_ashby(company: str) -> list[dict]:
     jobs = []
     for j in job_list:
         title = j.get("title", "")
-        if not PM_RE.search(title):
+        if not PM_RE.search(title) or PM_EXCLUDE_RE.search(title):
             continue
         location = j.get("location", "")
         if isinstance(location, dict):
@@ -476,7 +479,7 @@ def scrape_workable(company: str) -> list[dict]:
     jobs = []
     for j in data["jobs"]:
         title = j.get("title", "")
-        if not PM_RE.search(title):
+        if not PM_RE.search(title) or PM_EXCLUDE_RE.search(title):
             continue
         location = j.get("location", "")
         if isinstance(location, dict):
@@ -720,22 +723,38 @@ def generate_html_dashboard(conn: sqlite3.Connection):
     scored = []
     for row in rows:
         job = dict(zip(cols, row))
+        title = job["title"]
+        # Skip non-PM roles that slipped into the database
+        if not PM_RE.search(title) or PM_EXCLUDE_RE.search(title):
+            continue
         fresh = freshness_score(job["first_seen_at"], job["last_seen_at"], bool(job["reposted"]), now)
-        fit = fit_score(job["title"], job["description"] or "")
-        t = tier(fresh, fit, job["title"], job["description"] or "")
+        fit = fit_score(title, job["description"] or "")
+        t = tier(fresh, fit, title, job["description"] or "")
         combined = round(fresh * 0.4 + fit * 0.6, 1)
-        breakdown = compute_fit_breakdown(job["title"], job["description"] or "")
+        breakdown = compute_fit_breakdown(title, job["description"] or "")
         display = DISPLAY_NAMES.get(job["company"], job["company"].replace("-", " ").title())
         suggestions = _build_resume_suggestions(breakdown, fit) if fit < 75 else []
         salary = job.get("salary", "") or _extract_salary(job["description"] or "")
+        # Classify work type from location + description
+        loc_lower = (job["location"] or "").lower()
+        desc_lower = (job["description"] or "").lower()
+        if "hybrid" in loc_lower or "hybrid" in desc_lower[:500]:
+            work_type = "Hybrid"
+        elif "remote" in loc_lower:
+            work_type = "Remote"
+        elif not job["location"] or not job["location"].strip():
+            work_type = "Remote"
+        else:
+            work_type = "On-site"
         scored.append({
             "id": job["id"],
             "ats": job["ats"],
             "company": display,
             "companySlug": job["company"],
-            "title": job["title"],
+            "title": title,
             "url": job["url"] or "",
             "location": job["location"] or "",
+            "workType": work_type,
             "salary": salary,
             "fresh": fresh,
             "fit": fit,
@@ -831,6 +850,12 @@ padding:2px 6px;border-radius:4px;line-height:1}}
 .tier-tag.t-week{{background:var(--amber-bg);color:var(--amber)}}
 .tier-tag.t-watch{{background:var(--gray-bg);color:var(--muted)}}
 .repost-tag{{font-size:11px;color:var(--amber);font-weight:600;margin-left:4px}}
+.work-tag{{font-size:10px;padding:1px 6px;border-radius:4px;font-weight:500;margin-left:4px}}
+.wt-remote{{background:#dcfce7;color:#166534}}
+.wt-hybrid{{background:#fef3c7;color:#92400e}}
+.wt-onsite{{background:#e0e7ff;color:#3730a3}}
+@media(prefers-color-scheme:dark){{.wt-remote{{background:#14532d;color:#86efac}}
+.wt-hybrid{{background:#78350f;color:#fcd34d}}.wt-onsite{{background:#312e81;color:#a5b4fc}}}}
 .score-bars{{display:flex;gap:12px;margin:8px 0}}
 .score-bar{{flex:1}}
 .score-label{{font-size:11px;color:var(--muted);margin-bottom:2px;display:flex;justify-content:space-between}}
@@ -947,6 +972,20 @@ font-weight:600;font-size:14px;cursor:pointer;text-decoration:none;text-align:ce
 <div class="pill" data-tier="Apply This Week">This Week</div>
 <div class="pill" data-tier="Watch List">Watch List</div>
 </div>
+<select id="workTypeFilter">
+<option value="">All Work Types</option>
+<option value="Remote">Remote</option>
+<option value="Hybrid">Hybrid</option>
+<option value="On-site">On-site</option>
+</select>
+<select id="salaryFilter">
+<option value="">All Salaries</option>
+<option value="has">Has Salary</option>
+<option value="100">$100k+</option>
+<option value="150">$150k+</option>
+<option value="200">$200k+</option>
+<option value="250">$250k+</option>
+</select>
 <select id="statusFilter">
 <option value="">All Statuses</option>
 <option value="New">New</option>
@@ -1041,7 +1080,7 @@ return `<div class="card" data-id="${{esc(j.id)}}" onclick="openModal('${{esc(j.
 ${{j.reposted?'<span class="repost-tag">REPOST</span>':''}}</div>
 <button class="card-dismiss" onclick="event.stopPropagation();dismissJob('${{esc(j.id)}}')" title="Hide">&times;</button>
 </div>
-<div class="card-meta"><span class="company">${{esc(j.company)}}</span> &middot; ${{esc(j.location||'Remote')}}</div>
+<div class="card-meta"><span class="company">${{esc(j.company)}}</span> &middot; ${{esc(j.location||'Remote')}} <span class="work-tag wt-${{j.workType.toLowerCase().replace('-','')}}">${{j.workType}}</span></div>
 ${{salaryHtml}}
 <div class="score-bars">
 <div class="score-bar"><div class="score-label"><span>Freshness</span><span>${{j.fresh}}</span></div>
@@ -1057,15 +1096,25 @@ ${{['New','Saved','Applied','Interviewing','Rejected'].map(function(o){{return '
 </div></div>`;
 }}
 
+function parseSalaryNum(s){{
+if(!s)return 0;
+var m=s.match(/\\$(\\d[\\d,]*)/);
+return m?parseInt(m[1].replace(/,/g,''),10):0;
+}}
+
 function getFiltered(){{
 const q=document.getElementById('search').value.toLowerCase();
 const co=document.getElementById('companyFilter').value;
 const sf=document.getElementById('statusFilter').value;
+const wt=document.getElementById('workTypeFilter').value;
+const sal=document.getElementById('salaryFilter').value;
 let jobs=JOBS.filter(j=>{{
 if(sf==='Hidden')return state.hidden.includes(j.id);
 if(state.hidden.includes(j.id))return false;
 if(activeTier!=='all'&&j.tier!==activeTier)return false;
 if(co&&j.companySlug!==co)return false;
+if(wt&&j.workType!==wt)return false;
+if(sal){{if(sal==='has'){{if(!j.salary)return false}}else{{var minSal=parseInt(sal,10)*1000;if(parseSalaryNum(j.salary)<minSal)return false}}}}
 if(sf){{const st=state.statuses[j.id]||'New';if(st!==sf)return false}}
 if(q){{const txt=(j.title+' '+j.company+' '+j.location).toLowerCase();if(!txt.includes(q))return false}}
 return true}});
@@ -1289,9 +1338,9 @@ a.click();
 
 function exportCSV(){{
 const jobs=getFiltered();
-const hdr='Title,Company,Location,Salary,Tier,Freshness,Fit,Combined,URL,Status,First Seen\\n';
+const hdr='Title,Company,Location,Work Type,Salary,Tier,Freshness,Fit,Combined,URL,Status,First Seen\\n';
 const rows=jobs.map(j=>{{const s=state.statuses[j.id]||'New';
-return [j.title,j.company,j.location,j.salary||'',j.tier,j.fresh,j.fit,j.combined,j.url,s,j.firstSeen]
+return [j.title,j.company,j.location,j.workType,j.salary||'',j.tier,j.fresh,j.fit,j.combined,j.url,s,j.firstSeen]
 .map(v=>`"${{String(v).replace(/"/g,'""')}}"`)
 .join(',')}}).join('\\n');
 const blob=new Blob([hdr+rows],{{type:'text/csv'}});const a=document.createElement('a');
@@ -1341,6 +1390,8 @@ if(e.target===this)closeResumeModal()}});
 document.getElementById('search').addEventListener('input',render);
 document.getElementById('companyFilter').addEventListener('change',render);
 document.getElementById('statusFilter').addEventListener('change',render);
+document.getElementById('workTypeFilter').addEventListener('change',render);
+document.getElementById('salaryFilter').addEventListener('change',render);
 document.getElementById('sortBy').addEventListener('change',render);
 document.querySelectorAll('.pill').forEach(p=>p.addEventListener('click',function(){{
 document.querySelectorAll('.pill').forEach(x=>x.classList.remove('active'));

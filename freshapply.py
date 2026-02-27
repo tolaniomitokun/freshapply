@@ -44,6 +44,7 @@ RESUME_DATA = {
     ],
     "experience": [
         {
+            "section": "PROFESSIONAL EXPERIENCE",
             "company": "ANYWHERE REAL ESTATE (Coldwell Banker, Century 21, Sotheby's Intl Realty, ERA, Better Homes & Gardens, Corcoran)",
             "title": "Senior AI Product Manager",
             "location": "US Remote",
@@ -63,7 +64,8 @@ RESUME_DATA = {
             ],
         },
         {
-            "company": "THE EMERGENT DIAGNOSTIC INSTITUTION (Personal AI Build)",
+            "section": "PERSONAL AI PRODUCT BUILDS",
+            "company": "THE EMERGENT DIAGNOSTIC INSTITUTION",
             "title": "Solo Builder",
             "location": "",
             "dates": "February 2026",
@@ -75,7 +77,8 @@ RESUME_DATA = {
             ],
         },
         {
-            "company": "MULTI-AGENT AI HEALTHCARE SYSTEM NEXUS AI (Personal AI Build)",
+            "section": "",
+            "company": "MULTI-AGENT AI HEALTHCARE SYSTEM NEXUS AI",
             "title": "Founder & Builder",
             "location": "",
             "dates": "2025 - Present",
@@ -89,6 +92,7 @@ RESUME_DATA = {
             ],
         },
         {
+            "section": "PRIOR EXPERIENCE",
             "company": "COSTAR GROUP (CoStar, Apartments.com, Homes.com, LoopNet, STR & TenX)",
             "title": "Senior Product Manager",
             "location": "Washington, DC",
@@ -103,6 +107,7 @@ RESUME_DATA = {
             ],
         },
         {
+            "section": "",
             "company": "LIBRARY OF CONGRESS (Contract)",
             "title": "Senior Business Analyst / Product Owner",
             "location": "",
@@ -113,6 +118,7 @@ RESUME_DATA = {
             ],
         },
         {
+            "section": "",
             "company": "FEDERAL MINISTRY OF HEALTH, Nigeria",
             "title": "Business Analyst",
             "location": "",
@@ -1194,7 +1200,7 @@ return {{text:b,score:scoreBullet(b,j.description)}};
 }});
 scoredBullets.sort(function(a,b){{return b.score-a.score}});
 return {{
-company:exp.company,title:exp.title,location:exp.location,
+section:exp.section||'',company:exp.company,title:exp.title,location:exp.location,
 dates:exp.dates,overview:exp.overview,
 bullets:scoredBullets.map(function(b){{return b.text}})
 }};
@@ -1215,27 +1221,28 @@ var slug=j.company.toLowerCase().replace(/\\s+/g,'-')+'-'+j.title.toLowerCase().
 a.download='Tolani_Omitokun_Resume_'+slug+'.doc';a.click();return;
 }}
 
-/* Build Word-compatible HTML resume */
+/* Build Word-compatible HTML resume — tight layout matching original .docx */
 var h='<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">';
 h+='<head><meta charset="utf-8">';
+h+='<!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View></w:WordDocument></xml><![endif]-->';
 h+='<style>';
-h+='body{{font-family:Calibri,sans-serif;font-size:11pt;line-height:1.4;color:#1a1a2e;margin:0.5in 0.6in}}';
-h+='h1{{font-size:18pt;margin:0;letter-spacing:1px}}';
-h+='h2{{font-size:12pt;color:#2563eb;margin:14px 0 4px;border-bottom:1px solid #e5e7eb;padding-bottom:3px}}';
-h+='h3{{font-size:11pt;margin:10px 0 2px}}';
-h+='.contact{{font-size:9pt;color:#6b7280;margin:2px 0 4px}}';
-h+='.headline{{font-size:13pt;font-weight:bold;color:#1e293b;margin:6px 0 2px}}';
-h+='.tagline{{font-size:10pt;color:#2563eb;margin:0 0 8px}}';
-h+='.summary{{font-size:10pt;color:#374151;margin:4px 0 10px;line-height:1.5}}';
-h+='.comp{{font-size:10pt;color:#374151}}';
-h+='.company{{font-size:10pt;font-weight:bold;color:#1e293b;margin:8px 0 0}}';
-h+='.role{{font-size:10pt;color:#6b7280;margin:0 0 4px}}';
-h+='.overview{{font-size:10pt;color:#374151;margin:2px 0}}';
-h+='ul{{margin:4px 0;padding-left:18px}}';
-h+='li{{font-size:10pt;color:#374151;margin:3px 0;line-height:1.4}}';
-h+='.tools{{font-size:9pt;color:#374151}}';
-h+='.tools b{{color:#1e293b}}';
-h+='.edu{{font-size:9pt;color:#374151}}';
+h+='@page{{size:letter;margin:0.5in 0.5in 0.4in 0.5in}}';
+h+='body{{font-family:Calibri,sans-serif;font-size:9.5pt;line-height:1.25;color:#1a1a2e;margin:0}}';
+h+='h1{{font-size:14pt;margin:0 0 1px;letter-spacing:1px}}';
+h+='h2{{font-size:10pt;color:#000;margin:7px 0 2px;border-bottom:1px solid #c0c0c0;padding-bottom:1px;text-transform:uppercase;letter-spacing:0.5px}}';
+h+='.contact{{font-size:8.5pt;color:#555;margin:1px 0 2px}}';
+h+='.headline{{font-size:11pt;font-weight:bold;color:#1e293b;margin:3px 0 1px}}';
+h+='.tagline{{font-size:9pt;color:#2563eb;margin:0 0 4px}}';
+h+='.summary{{font-size:9pt;color:#333;margin:2px 0 5px;line-height:1.3}}';
+h+='.comp{{font-size:9pt;color:#333;line-height:1.3}}';
+h+='.company{{font-size:9pt;font-weight:bold;color:#1a1a2e;margin:5px 0 0}}';
+h+='.role{{font-size:9pt;color:#555;margin:0 0 1px}}';
+h+='.overview{{font-size:9pt;color:#333;margin:1px 0;font-style:italic}}';
+h+='ul{{margin:1px 0 3px;padding-left:14px}}';
+h+='li{{font-size:9pt;color:#333;margin:1px 0;line-height:1.25}}';
+h+='.tools{{font-size:8.5pt;color:#333;line-height:1.3}}';
+h+='.tools b{{color:#1a1a2e}}';
+h+='.edu{{font-size:8.5pt;color:#333}}';
 h+='</style></head><body>';
 
 h+='<h1>'+esc(R.name)+'</h1>';
@@ -1247,8 +1254,9 @@ h+='<div class="summary">'+esc(R.summary)+'</div>';
 h+='<h2>CORE COMPETENCIES</h2>';
 h+='<div class="comp">'+orderedComps.map(function(c){{return esc(c)}}).join('  &bull;  ')+'</div>';
 
-h+='<h2>PROFESSIONAL EXPERIENCE</h2>';
+var lastSection='';
 expSections.forEach(function(exp){{
+if(exp.section&&exp.section!==lastSection){{h+='<h2>'+esc(exp.section)+'</h2>';lastSection=exp.section}}
 h+='<div class="company">'+esc(exp.company)+'</div>';
 var roleLine=esc(exp.title);
 if(exp.location)roleLine+='  |  '+esc(exp.location);

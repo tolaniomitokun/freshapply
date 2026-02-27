@@ -76,28 +76,40 @@ PM_RE = re.compile("|".join(PM_TITLE_PATTERNS), re.IGNORECASE)
 # ── Fit‑score keyword buckets (weight → list of patterns) ────────────────────
 
 FIT_KEYWORDS = {
-    # AI / ML — highest signal
-    15: [
-        r"\bai\b", r"\bartificial\s+intelligence\b", r"\bmachine\s+learning\b",
-        r"\bml\b", r"\bllm\b", r"\blarge\s+language\s+model",
-        r"\bgenerative\b", r"\bdeep\s+learning\b", r"\bnlp\b",
-        r"\bfoundation\s+model", r"\bgpt\b", r"\btransformer\b",
-    ],
-    # Seniority
-    10: [
-        r"\bsenior\b", r"\bstaff\b", r"\bprincipal\b", r"\bdirector\b",
-        r"\blead\b", r"\bhead\s+of\b", r"\bvp\b",
-    ],
-    # Domain fit
-    8: [
-        r"\bplatform\b", r"\benterprise\b", r"\binfrastructure\b",
-        r"\bworkflow\b", r"\bautomation\b", r"\bagent\b", r"\bagentic\b",
-    ],
-    # Industry verticals
-    6: [
-        r"\breal\s+estate\b", r"\bproptech\b",
-        r"\bhealthcare\b", r"\bhealth\s+tech\b", r"\bclinical\b",
-    ],
+    # AI / ML — highest signal (up to 30 pts: 8 per hit, max 30)
+    "AI / ML": {
+        "base": 8, "max": 30,
+        "patterns": [
+            r"\bai\b", r"\bartificial\s+intelligence\b", r"\bmachine\s+learning\b",
+            r"\bml\b", r"\bllm\b", r"\blarge\s+language\s+model",
+            r"\bgenerative\b", r"\bdeep\s+learning\b", r"\bnlp\b",
+            r"\bfoundation\s+model", r"\bgpt\b", r"\btransformer\b",
+        ],
+    },
+    # Seniority (up to 25 pts: 10 per hit, max 25)
+    "Seniority": {
+        "base": 10, "max": 25,
+        "patterns": [
+            r"\bsenior\b", r"\bstaff\b", r"\bprincipal\b", r"\bdirector\b",
+            r"\blead\b", r"\bhead\s+of\b", r"\bvp\b",
+        ],
+    },
+    # Domain fit (up to 25 pts: 7 per hit, max 25)
+    "Domain Fit": {
+        "base": 7, "max": 25,
+        "patterns": [
+            r"\bplatform\b", r"\benterprise\b", r"\binfrastructure\b",
+            r"\bworkflow\b", r"\bautomation\b", r"\bagent\b", r"\bagentic\b",
+        ],
+    },
+    # Industry verticals (up to 20 pts: 10 per hit, max 20)
+    "Industry Verticals": {
+        "base": 10, "max": 20,
+        "patterns": [
+            r"\breal\s+estate\b", r"\bproptech\b",
+            r"\bhealthcare\b", r"\bhealth\s+tech\b", r"\bclinical\b",
+        ],
+    },
 }
 
 # ── Paths ────────────────────────────────────────────────────────────────────
@@ -402,38 +414,34 @@ def freshness_score(first_seen: str, last_seen: str, reposted: bool, now: dateti
     return score
 
 
-FIT_BUCKET_NAMES = {15: "AI / ML", 10: "Seniority", 8: "Domain Fit", 6: "Industry Verticals"}
-
-
 def compute_fit_breakdown(title: str, description: str) -> list[dict]:
-    """Return list of {bucket, weight, matched} for each keyword bucket."""
+    """Return list of {bucket, weight, matched, hits, maxPts} for each keyword bucket."""
     text = f"{title} {description}"
     breakdown = []
-    for weight, patterns in FIT_KEYWORDS.items():
-        matched_term = None
-        for pat in patterns:
+    for bucket_name, cfg in FIT_KEYWORDS.items():
+        matched_terms = []
+        for pat in cfg["patterns"]:
             m = re.search(pat, text, re.IGNORECASE)
             if m:
-                matched_term = m.group(0)
-                break
+                matched_terms.append(m.group(0))
+        pts = min(cfg["max"], len(matched_terms) * cfg["base"])
         breakdown.append({
-            "bucket": FIT_BUCKET_NAMES.get(weight, f"Weight {weight}"),
-            "weight": weight,
-            "matched": matched_term,
+            "bucket": bucket_name,
+            "weight": pts,
+            "maxPts": cfg["max"],
+            "matched": ", ".join(matched_terms) if matched_terms else None,
+            "hits": len(matched_terms),
         })
     return breakdown
 
 
 def fit_score(title: str, description: str) -> int:
     """0‑100. Higher = better match to target profile."""
-    text = f"{title} {description}".lower()
+    text = f"{title} {description}"
     total = 0
-    for weight, patterns in FIT_KEYWORDS.items():
-        for pat in patterns:
-            if re.search(pat, text, re.IGNORECASE):
-                total += weight
-                break  # one hit per bucket is enough
-
+    for cfg in FIT_KEYWORDS.values():
+        hits = sum(1 for pat in cfg["patterns"] if re.search(pat, text, re.IGNORECASE))
+        total += min(cfg["max"], hits * cfg["base"])
     return min(100, total)
 
 
@@ -441,9 +449,9 @@ def tier(fresh: int, fit: int, title: str, description: str) -> str:
     text = f"{title} {description}".lower()
     has_ai = bool(re.search(r"\bai\b|\bartificial.intelligence|\bml\b|\bllm\b|\bmachine.learn", text))
 
-    if fresh >= 70 and fit >= 30 and has_ai:
+    if fresh >= 70 and fit >= 40 and has_ai:
         return "Apply Today"
-    if fresh >= 50 and fit >= 20:
+    if fresh >= 50 and fit >= 25:
         return "Apply This Week"
     return "Watch List"
 
@@ -520,8 +528,8 @@ def generate_digest(conn: sqlite3.Connection):
 
 # ── HTML Dashboard ───────────────────────────────────────────────────────────
 
-def _build_resume_suggestions(breakdown: list[dict]) -> list[dict]:
-    """For each unmatched keyword bucket, return resume improvement tips."""
+def _build_resume_suggestions(breakdown: list[dict], fit: int) -> list[dict]:
+    """For unmatched or under-matched keyword buckets, return resume improvement tips."""
     tips_map = {
         "AI / ML": {
             "keywords": "AI, machine learning, ML, LLM, NLP, generative AI, deep learning, GPT, transformer models",
@@ -558,11 +566,25 @@ def _build_resume_suggestions(breakdown: list[dict]) -> list[dict]:
     }
     suggestions = []
     for b in breakdown:
-        if b["matched"] is None and b["bucket"] in tips_map:
-            tip = tips_map[b["bucket"]]
+        if b["bucket"] not in tips_map:
+            continue
+        tip = tips_map[b["bucket"]]
+        if b["matched"] is None:
+            # Completely missing — high priority
             suggestions.append({
                 "bucket": b["bucket"],
-                "weight": b["weight"],
+                "weight": b["maxPts"],
+                "status": "missing",
+                "keywords": tip["keywords"],
+                "bullets": tip["bullets"],
+            })
+        elif b["weight"] < b["maxPts"]:
+            # Partially matched — can earn more points
+            gap = b["maxPts"] - b["weight"]
+            suggestions.append({
+                "bucket": b["bucket"],
+                "weight": gap,
+                "status": "partial",
                 "keywords": tip["keywords"],
                 "bullets": tip["bullets"],
             })
@@ -587,7 +609,7 @@ def generate_html_dashboard(conn: sqlite3.Connection):
         combined = round(fresh * 0.4 + fit * 0.6, 1)
         breakdown = compute_fit_breakdown(job["title"], job["description"] or "")
         display = DISPLAY_NAMES.get(job["company"], job["company"].replace("-", " ").title())
-        suggestions = _build_resume_suggestions(breakdown) if fit < 75 else []
+        suggestions = _build_resume_suggestions(breakdown, fit) if fit < 75 else []
         salary = job.get("salary", "") or _extract_salary(job["description"] or "")
         scored.append({
             "id": job["id"],
@@ -924,8 +946,8 @@ document.getElementById('mScores').innerHTML=
 `<div class="m-score-box"><div class="m-score-val" style="color:var(--accent)">${{j.combined}}</div><div class="m-score-lbl">Combined</div></div>`;
 
 document.getElementById('mBreakdown').innerHTML=j.breakdown.map(function(b){{
-var cell=b.matched?'<span class="match">Matched: '+esc(b.matched)+'</span>':'<span class="no-match">Missing</span>';
-return '<tr><td>'+esc(b.bucket)+'</td><td>'+b.weight+' pts</td><td>'+cell+'</td></tr>';
+var cell=b.matched?'<span class="match">'+esc(b.matched)+' ('+b.hits+' hits)</span>':'<span class="no-match">Not found</span>';
+return '<tr><td>'+esc(b.bucket)+'</td><td>'+b.weight+'/'+b.maxPts+' pts</td><td>'+cell+'</td></tr>';
 }}).join('');
 
 /* Gap analysis + resume tips */
@@ -934,9 +956,10 @@ if(j.fit<75 && j.suggestions && j.suggestions.length>0){{
 let gh=`<div class="gap-section"><h4>Resume Gap Analysis (Fit: ${{j.fit}}/100)</h4>
 <p style="font-size:12px;margin-bottom:8px">You're missing these keyword categories. Add them to your resume to improve your match:</p>`;
 j.suggestions.forEach(function(s){{
+var label=s.status==='missing'?'MISSING':'NEEDS MORE';
 var bullets=s.bullets.map(function(b){{return '<li>'+esc(b)+'</li>'}}).join('');
 gh+='<div class="gap-item">'+
-'<div class="gap-item-head">'+esc(s.bucket)+' <span class="pts">(+'+s.weight+' pts if added)</span></div>'+
+'<div class="gap-item-head"><span style="color:var(--red)">'+label+':</span> '+esc(s.bucket)+' <span class="pts">(+'+s.weight+' pts available)</span></div>'+
 '<div class="gap-keywords">Add keywords: '+esc(s.keywords)+'</div>'+
 '<ul class="gap-bullets">'+bullets+'</ul></div>';
 }});

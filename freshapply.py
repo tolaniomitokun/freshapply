@@ -831,7 +831,10 @@ padding:2px 6px;border-radius:4px;line-height:1}}
 .bar-track{{height:6px;background:var(--border);border-radius:3px;overflow:hidden}}
 .bar-fill{{height:100%;border-radius:3px;transition:width .3s}}
 .bar-fill.fresh{{background:var(--bar-fresh)}}
-.bar-fill.fit{{background:var(--bar-fit)}}
+.bar-fill.fit-high{{background:var(--green)}}
+.bar-fill.fit-mid{{background:var(--blue)}}
+.bar-fill.fit-low{{background:var(--amber)}}
+.bar-fill.fit-vlow{{background:var(--red)}}
 .card-foot{{display:flex;justify-content:space-between;align-items:center;margin-top:10px}}
 .card-date{{font-size:11px;color:var(--muted)}}
 .status-select{{padding:4px 8px;font-size:11px;border-radius:6px;border:1px solid var(--border);
@@ -885,6 +888,34 @@ padding:16px;margin:12px 0}}
 border-radius:var(--radius);font-weight:600;font-size:13px;cursor:pointer}}
 .btn-resume:hover{{opacity:.9}}
 
+/* Resume upload modal */
+.resume-overlay{{display:none;position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,.55);
+justify-content:center;align-items:center}}
+.resume-overlay.open{{display:flex}}
+.resume-modal{{background:var(--card);border-radius:var(--radius);padding:28px;width:min(600px,90vw);
+max-height:85vh;overflow-y:auto;position:relative;box-shadow:0 12px 40px rgba(0,0,0,.25)}}
+.resume-modal h3{{font-size:18px;margin:0 0 4px}}
+.resume-modal p{{font-size:13px;color:var(--muted);margin:0 0 14px}}
+.resume-modal .rm-close{{position:absolute;top:14px;right:14px;background:none;border:none;
+font-size:22px;cursor:pointer;color:var(--muted);line-height:1}}
+.resume-modal .rm-close:hover{{color:var(--text)}}
+.resume-modal textarea{{width:100%;min-height:250px;padding:12px;border:1px solid var(--border);
+border-radius:var(--radius);font-size:12px;font-family:'Courier New',monospace;
+background:var(--bg);color:var(--text);resize:vertical;line-height:1.5}}
+.resume-modal textarea:focus{{outline:none;border-color:var(--accent)}}
+.resume-modal .rm-file{{margin:10px 0;font-size:13px}}
+.resume-modal .rm-actions{{display:flex;gap:10px;margin-top:14px;flex-wrap:wrap}}
+.resume-modal .rm-btn{{padding:8px 18px;border:none;border-radius:var(--radius);
+font-weight:600;font-size:13px;cursor:pointer}}
+.resume-modal .rm-save{{background:var(--accent);color:#fff}}
+.resume-modal .rm-save:hover{{opacity:.9}}
+.resume-modal .rm-clear{{background:var(--bg);color:var(--red);border:1px solid var(--border)}}
+.resume-modal .rm-clear:hover{{background:var(--red);color:#fff}}
+.resume-modal .rm-status{{font-size:12px;color:var(--green);margin-top:8px;display:none}}
+.btn-upload{{padding:8px 14px;background:var(--card);color:var(--text);border:1px solid var(--border);
+border-radius:var(--radius);font-size:13px;font-weight:500;cursor:pointer}}
+.btn-upload:hover{{border-color:var(--accent);color:var(--accent)}}
+
 .modal .m-notes{{width:100%;padding:10px;border:1px solid var(--border);border-radius:var(--radius);
 font-size:13px;min-height:70px;background:var(--bg);color:var(--text);resize:vertical;font-family:inherit}}
 .modal .m-notes:focus{{outline:none;border-color:var(--accent)}}
@@ -927,6 +958,7 @@ font-weight:600;font-size:14px;cursor:pointer;text-decoration:none;text-align:ce
 <option value="newest">Newest First</option>
 </select>
 <button class="btn btn-export" onclick="exportCSV()">Export CSV</button>
+<button class="btn-upload" onclick="openResumeModal()">Update Resume</button>
 </div></div>
 
 <div class="counter-bar" id="counterBar"></div>
@@ -953,6 +985,25 @@ font-weight:600;font-size:14px;cursor:pointer;text-decoration:none;text-align:ce
 </div>
 </div>
 
+<div class="resume-overlay" id="resumeOverlay">
+<div class="resume-modal">
+<button class="rm-close" onclick="closeResumeModal()">&times;</button>
+<h3>Update Your Resume</h3>
+<p>Paste your resume text below or upload a .txt file. This will be used when generating tailored resumes for each job.</p>
+<div class="rm-file">
+<label><strong>Upload .txt file:</strong>
+<input type="file" id="resumeFile" accept=".txt" onchange="loadResumeFile(this)" style="margin-left:8px">
+</label>
+</div>
+<textarea id="resumeText" placeholder="Paste your resume text here..."></textarea>
+<div class="rm-actions">
+<button class="rm-btn rm-save" onclick="saveResume()">Save Resume</button>
+<button class="rm-btn rm-clear" onclick="clearResume()">Clear Custom Resume</button>
+</div>
+<div class="rm-status" id="resumeStatus">Resume saved successfully!</div>
+</div>
+</div>
+
 <script>
 const JOBS={jobs_json};
 const RESUME={resume_json};
@@ -969,6 +1020,8 @@ let currentModalId=null;
 function esc(s){{const d=document.createElement('div');d.textContent=s;return d.innerHTML}}
 
 function tierClass(t){{if(t==='Apply Today')return 't-today';if(t==='Apply This Week')return 't-week';return 't-watch'}}
+function fitClass(score){{if(score>=75)return 'fit-high';if(score>=50)return 'fit-mid';if(score>=25)return 'fit-low';return 'fit-vlow'}}
+function fitColor(score){{if(score>=75)return 'var(--green)';if(score>=50)return 'var(--blue)';if(score>=25)return 'var(--amber)';return 'var(--red)'}}
 function statusClass(st){{return st?'s-'+st.toLowerCase():''}}
 
 function renderCard(j){{
@@ -988,7 +1041,7 @@ ${{salaryHtml}}
 <div class="score-bar"><div class="score-label"><span>Freshness</span><span>${{j.fresh}}</span></div>
 <div class="bar-track"><div class="bar-fill fresh" style="width:${{j.fresh}}%"></div></div></div>
 <div class="score-bar"><div class="score-label"><span>Fit</span><span>${{j.fit}}</span></div>
-<div class="bar-track"><div class="bar-fill fit" style="width:${{j.fit}}%"></div></div></div>
+<div class="bar-track"><div class="bar-fill ${{fitClass(j.fit)}}" style="width:${{j.fit}}%"></div></div></div>
 </div>
 <div class="card-foot">
 <span class="card-date">First seen ${{j.firstSeen}}${{hasNote}}</span>
@@ -1055,7 +1108,7 @@ salaryEl.textContent=j.salary||'Salary not listed';
 salaryEl.style.color=j.salary?'var(--green)':'var(--muted)';
 document.getElementById('mScores').innerHTML=
 `<div class="m-score-box"><div class="m-score-val" style="color:var(--bar-fresh)">${{j.fresh}}</div><div class="m-score-lbl">Fresh</div></div>`+
-`<div class="m-score-box"><div class="m-score-val" style="color:var(--bar-fit)">${{j.fit}}</div><div class="m-score-lbl">Fit</div></div>`+
+`<div class="m-score-box"><div class="m-score-val" style="color:${{fitColor(j.fit)}}">${{j.fit}}</div><div class="m-score-lbl">Fit</div></div>`+
 `<div class="m-score-box"><div class="m-score-val" style="color:var(--accent)">${{j.combined}}</div><div class="m-score-lbl">Combined</div></div>`;
 
 document.getElementById('mBreakdown').innerHTML=j.breakdown.map(function(b){{
@@ -1147,46 +1200,82 @@ bullets:scoredBullets.map(function(b){{return b.text}})
 }};
 }});
 
-/* Build the resume text */
-var ln='\\n';
-var txt='';
-txt+=R.name+ln;
-txt+=R.contact+ln;
-txt+=ln;
-txt+=R.headline+ln;
-txt+=tagline+ln;
-txt+=ln;
-txt+=R.summary+ln;
-txt+=ln;
-txt+='CORE COMPETENCIES'+ln;
-txt+=orderedComps.join('  \\u2022  ')+ln;
-txt+=ln;
-txt+='PROFESSIONAL EXPERIENCE'+ln;
-txt+=ln;
-expSections.forEach(function(exp){{
-txt+=exp.company+ln;
-txt+=exp.title;
-if(exp.location)txt+='  |  '+exp.location;
-txt+='  |  '+exp.dates+ln;
-if(exp.overview)txt+=exp.overview+ln;
-exp.bullets.forEach(function(b){{
-txt+='  \\u2022  '+b+ln;
-}});
-txt+=ln;
-}});
-txt+='AI PM TOOLKIT'+ln;
-Object.keys(R.tools).forEach(function(k){{
-txt+=k+': '+R.tools[k]+ln;
-}});
-txt+=ln;
-txt+='EDUCATION & CERTIFICATIONS'+ln;
-txt+=R.education+ln;
+/* Check if user uploaded a custom resume */
+var customResume=localStorage.getItem('freshapply_custom_resume');
+if(customResume){{
+/* For custom resume: download as-is in .doc format with a header note */
+var h='<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">';
+h+='<head><meta charset="utf-8"><style>body{{font-family:Calibri,sans-serif;font-size:11pt;line-height:1.4;color:#1a1a2e}}';
+h+='p{{margin:4px 0}}</style></head><body>';
+h+='<p>'+customResume.replace(/\\n/g,'<br>')+'</p>';
+h+='</body></html>';
+var blob=new Blob([h],{{type:'application/msword'}});
+var a=document.createElement('a');a.href=URL.createObjectURL(blob);
+var slug=j.company.toLowerCase().replace(/\\s+/g,'-')+'-'+j.title.toLowerCase().replace(/[^a-z0-9]+/g,'-').substring(0,40);
+a.download='Tolani_Omitokun_Resume_'+slug+'.doc';a.click();return;
+}}
 
-var blob=new Blob([txt],{{type:'text/plain'}});
+/* Build Word-compatible HTML resume */
+var h='<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">';
+h+='<head><meta charset="utf-8">';
+h+='<style>';
+h+='body{{font-family:Calibri,sans-serif;font-size:11pt;line-height:1.4;color:#1a1a2e;margin:0.5in 0.6in}}';
+h+='h1{{font-size:18pt;margin:0;letter-spacing:1px}}';
+h+='h2{{font-size:12pt;color:#2563eb;margin:14px 0 4px;border-bottom:1px solid #e5e7eb;padding-bottom:3px}}';
+h+='h3{{font-size:11pt;margin:10px 0 2px}}';
+h+='.contact{{font-size:9pt;color:#6b7280;margin:2px 0 4px}}';
+h+='.headline{{font-size:13pt;font-weight:bold;color:#1e293b;margin:6px 0 2px}}';
+h+='.tagline{{font-size:10pt;color:#2563eb;margin:0 0 8px}}';
+h+='.summary{{font-size:10pt;color:#374151;margin:4px 0 10px;line-height:1.5}}';
+h+='.comp{{font-size:10pt;color:#374151}}';
+h+='.company{{font-size:10pt;font-weight:bold;color:#1e293b;margin:8px 0 0}}';
+h+='.role{{font-size:10pt;color:#6b7280;margin:0 0 4px}}';
+h+='.overview{{font-size:10pt;color:#374151;margin:2px 0}}';
+h+='ul{{margin:4px 0;padding-left:18px}}';
+h+='li{{font-size:10pt;color:#374151;margin:3px 0;line-height:1.4}}';
+h+='.tools{{font-size:9pt;color:#374151}}';
+h+='.tools b{{color:#1e293b}}';
+h+='.edu{{font-size:9pt;color:#374151}}';
+h+='</style></head><body>';
+
+h+='<h1>'+esc(R.name)+'</h1>';
+h+='<div class="contact">'+esc(R.contact)+'</div>';
+h+='<div class="headline">'+esc(R.headline)+'</div>';
+h+='<div class="tagline">'+esc(tagline)+'</div>';
+h+='<div class="summary">'+esc(R.summary)+'</div>';
+
+h+='<h2>CORE COMPETENCIES</h2>';
+h+='<div class="comp">'+orderedComps.map(function(c){{return esc(c)}}).join('  &bull;  ')+'</div>';
+
+h+='<h2>PROFESSIONAL EXPERIENCE</h2>';
+expSections.forEach(function(exp){{
+h+='<div class="company">'+esc(exp.company)+'</div>';
+var roleLine=esc(exp.title);
+if(exp.location)roleLine+='  |  '+esc(exp.location);
+roleLine+='  |  '+esc(exp.dates);
+h+='<div class="role">'+roleLine+'</div>';
+if(exp.overview)h+='<div class="overview">'+esc(exp.overview)+'</div>';
+h+='<ul>';
+exp.bullets.forEach(function(b){{h+='<li>'+esc(b)+'</li>'}});
+h+='</ul>';
+}});
+
+h+='<h2>AI PM TOOLKIT</h2>';
+h+='<div class="tools">';
+Object.keys(R.tools).forEach(function(k){{
+h+='<b>'+esc(k)+':</b> '+esc(R.tools[k])+'<br>';
+}});
+h+='</div>';
+
+h+='<h2>EDUCATION &amp; CERTIFICATIONS</h2>';
+h+='<div class="edu">'+esc(R.education)+'</div>';
+h+='</body></html>';
+
+var blob=new Blob([h],{{type:'application/msword'}});
 var a=document.createElement('a');
 a.href=URL.createObjectURL(blob);
 var slug=j.company.toLowerCase().replace(/\\s+/g,'-')+'-'+j.title.toLowerCase().replace(/[^a-z0-9]+/g,'-').substring(0,40);
-a.download='Tolani_Omitokun_Resume_'+slug+'.txt';
+a.download='Tolani_Omitokun_Resume_'+slug+'.doc';
 a.click();
 }}
 
@@ -1200,6 +1289,47 @@ return [j.title,j.company,j.location,j.salary||'',j.tier,j.fresh,j.fit,j.combine
 const blob=new Blob([hdr+rows],{{type:'text/csv'}});const a=document.createElement('a');
 a.href=URL.createObjectURL(blob);a.download='freshapply-export.csv';a.click()}}
 
+function openResumeModal(){{
+var existing=localStorage.getItem('freshapply_custom_resume');
+document.getElementById('resumeText').value=existing||'';
+document.getElementById('resumeStatus').style.display='none';
+document.getElementById('resumeFile').value='';
+document.getElementById('resumeOverlay').classList.add('open');
+}}
+
+function closeResumeModal(){{
+document.getElementById('resumeOverlay').classList.remove('open');
+}}
+
+function loadResumeFile(input){{
+if(!input.files||!input.files[0])return;
+var reader=new FileReader();
+reader.onload=function(e){{document.getElementById('resumeText').value=e.target.result}};
+reader.readAsText(input.files[0]);
+}}
+
+function saveResume(){{
+var txt=document.getElementById('resumeText').value.trim();
+if(!txt){{alert('Please paste or upload your resume text first.');return}}
+localStorage.setItem('freshapply_custom_resume',txt);
+var st=document.getElementById('resumeStatus');
+st.textContent='Resume saved successfully! Tailored resumes will now use your updated version.';
+st.style.color='var(--green)';st.style.display='block';
+setTimeout(function(){{st.style.display='none'}},4000);
+}}
+
+function clearResume(){{
+localStorage.removeItem('freshapply_custom_resume');
+document.getElementById('resumeText').value='';
+var st=document.getElementById('resumeStatus');
+st.textContent='Custom resume cleared. Default resume will be used for tailored downloads.';
+st.style.color='var(--amber)';st.style.display='block';
+setTimeout(function(){{st.style.display='none'}},4000);
+}}
+
+document.getElementById('resumeOverlay').addEventListener('click',function(e){{
+if(e.target===this)closeResumeModal()}});
+
 document.getElementById('search').addEventListener('input',render);
 document.getElementById('companyFilter').addEventListener('change',render);
 document.getElementById('statusFilter').addEventListener('change',render);
@@ -1209,7 +1339,7 @@ document.querySelectorAll('.pill').forEach(x=>x.classList.remove('active'));
 this.classList.add('active');activeTier=this.dataset.tier;render()}}));
 document.getElementById('modalOverlay').addEventListener('click',function(e){{
 if(e.target===this)closeModal()}});
-document.addEventListener('keydown',function(e){{if(e.key==='Escape')closeModal()}});
+document.addEventListener('keydown',function(e){{if(e.key==='Escape'){{closeModal();closeResumeModal()}}}});
 
 initCompanies();render();
 </script>

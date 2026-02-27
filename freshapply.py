@@ -858,7 +858,7 @@ ${{salaryHtml}}
 <div class="card-foot">
 <span class="card-date">First seen ${{j.firstSeen}}${{hasNote}}</span>
 <select class="status-select ${{statusClass(s)}}" onclick="event.stopPropagation()" onchange="setStatus('${{esc(j.id)}}',this.value,this)">
-${{['New','Saved','Applied','Interviewing','Rejected'].map(o=>`<option ${{o===s?'selected':''}}>${{o}}</option>`).join('')}}
+${{['New','Saved','Applied','Interviewing','Rejected'].map(function(o){{return '<option '+(o===s?'selected':'')+'>'+o+'</option>'}}).join('')}}
 </select>
 </div></div>`;
 }}
@@ -923,21 +923,22 @@ document.getElementById('mScores').innerHTML=
 `<div class="m-score-box"><div class="m-score-val" style="color:var(--bar-fit)">${{j.fit}}</div><div class="m-score-lbl">Fit</div></div>`+
 `<div class="m-score-box"><div class="m-score-val" style="color:var(--accent)">${{j.combined}}</div><div class="m-score-lbl">Combined</div></div>`;
 
-document.getElementById('mBreakdown').innerHTML=j.breakdown.map(b=>
-`<tr><td>${{esc(b.bucket)}}</td><td>${{b.weight}} pts</td><td>${{b.matched?
-`<span class="match">Matched: ${{esc(b.matched)}}</span>`:
-`<span class="no-match">Missing</span>'}}</td></tr>`).join('');
+document.getElementById('mBreakdown').innerHTML=j.breakdown.map(function(b){{
+var cell=b.matched?'<span class="match">Matched: '+esc(b.matched)+'</span>':'<span class="no-match">Missing</span>';
+return '<tr><td>'+esc(b.bucket)+'</td><td>'+b.weight+' pts</td><td>'+cell+'</td></tr>';
+}}).join('');
 
 /* Gap analysis + resume tips */
 const gapEl=document.getElementById('mGap');
 if(j.fit<75 && j.suggestions && j.suggestions.length>0){{
 let gh=`<div class="gap-section"><h4>Resume Gap Analysis (Fit: ${{j.fit}}/100)</h4>
 <p style="font-size:12px;margin-bottom:8px">You're missing these keyword categories. Add them to your resume to improve your match:</p>`;
-j.suggestions.forEach(s=>{{
-gh+=`<div class="gap-item">
-<div class="gap-item-head">${{esc(s.bucket)}} <span class="pts">(+${{s.weight}} pts if added)</span></div>
-<div class="gap-keywords">Add keywords: ${{esc(s.keywords)}}</div>
-<ul class="gap-bullets">${{s.bullets.map(b=>`<li>${{esc(b)}}</li>`).join('')}}</ul></div>`;
+j.suggestions.forEach(function(s){{
+var bullets=s.bullets.map(function(b){{return '<li>'+esc(b)+'</li>'}}).join('');
+gh+='<div class="gap-item">'+
+'<div class="gap-item-head">'+esc(s.bucket)+' <span class="pts">(+'+s.weight+' pts if added)</span></div>'+
+'<div class="gap-keywords">Add keywords: '+esc(s.keywords)+'</div>'+
+'<ul class="gap-bullets">'+bullets+'</ul></div>';
 }});
 gh+=`<button class="btn-resume" onclick="downloadResumeTips('${{esc(j.id)}}')">Download Resume Tips for This Role</button></div>`;
 gapEl.innerHTML=gh;

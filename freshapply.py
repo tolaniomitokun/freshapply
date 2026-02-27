@@ -12,6 +12,7 @@ Usage:
 """
 
 import hashlib
+import html as html_mod
 import json
 import os
 import re
@@ -111,19 +112,30 @@ DIGEST_DIR = os.path.join(BASE_DIR, "digests")
 def init_db(conn: sqlite3.Connection):
     conn.execute("""
         CREATE TABLE IF NOT EXISTS jobs (
-            id            TEXT PRIMARY KEY,   -- ats:company:external_id
-            ats           TEXT NOT NULL,
-            company       TEXT NOT NULL,
-            title         TEXT NOT NULL,
-            url           TEXT,
-            location      TEXT,
-            description   TEXT,
-            desc_hash     TEXT,
-            first_seen_at TEXT NOT NULL,
-            last_seen_at  TEXT NOT NULL,
-            reposted      INTEGER DEFAULT 0
+            id               TEXT PRIMARY KEY,   -- ats:company:external_id
+            ats              TEXT NOT NULL,
+            company          TEXT NOT NULL,
+            title            TEXT NOT NULL,
+            url              TEXT,
+            location         TEXT,
+            description      TEXT,
+            description_html TEXT DEFAULT '',
+            salary           TEXT DEFAULT '',
+            desc_hash        TEXT,
+            first_seen_at    TEXT NOT NULL,
+            last_seen_at     TEXT NOT NULL,
+            reposted         INTEGER DEFAULT 0
         )
     """)
+    # Migrate existing DBs that lack new columns
+    try:
+        conn.execute("ALTER TABLE jobs ADD COLUMN description_html TEXT DEFAULT ''")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        conn.execute("ALTER TABLE jobs ADD COLUMN salary TEXT DEFAULT ''")
+    except sqlite3.OperationalError:
+        pass
     conn.execute("""
         CREATE INDEX IF NOT EXISTS idx_jobs_company ON jobs(company)
     """)
@@ -158,10 +170,13 @@ def upsert_job(conn: sqlite3.Connection, job: dict, now: str):
 
         conn.execute(
             """INSERT INTO jobs (id, ats, company, title, url, location, description,
-                                 desc_hash, first_seen_at, last_seen_at, reposted)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                                 description_html, salary, desc_hash,
+                                 first_seen_at, last_seen_at, reposted)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (jid, job["ats"], job["company"], job["title"], job.get("url"),
-             job.get("location"), job.get("description"), desc_hash, now, now, reposted),
+             job.get("location"), job.get("description"),
+             job.get("descriptionHtml", ""), job.get("salary", ""),
+             desc_hash, now, now, reposted),
         )
         conn.execute(
             "INSERT INTO desc_hashes (hash, company, title, job_id, seen_at) VALUES (?, ?, ?, ?, ?)",
@@ -195,11 +210,44 @@ def fetch_json(url: str, timeout: int = 30, method: str = "GET", data: bytes = N
 
 # ── ATS scrapers ─────────────────────────────────────────────────────────────
 
-def _strip_html(html: str) -> str:
-    if not html:
+def _strip_html(raw: str) -> str:
+    if not raw:
         return ""
-    text = re.sub(r"<[^>]+>", " ", html)
+    text = html_mod.unescape(raw)
+    text = re.sub(r"<[^>]+>", " ", text)
     return re.sub(r"\s+", " ", text).strip()
+
+
+def _sanitize_html(raw: str) -> str:
+    """Keep basic formatting tags but remove scripts, styles, and event handlers."""
+    if not raw:
+        return ""
+    text = re.sub(r"<script[^>]*>.*?</script>", "", raw, flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(r"<style[^>]*>.*?</style>", "", raw, flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(r'\s+on\w+\s*=\s*"[^"]*"', "", text)
+    text = re.sub(r"\s+on\w+\s*=\s*'[^']*'", "", text)
+    return text.strip()
+
+
+def _extract_salary(text: str) -> str:
+    """Try to pull a salary range from description text."""
+    if not text:
+        return ""
+    m = re.search(
+        r"\$[\d,]+(?:\.\d+)?\s*[kK]?\s*[-–—~]+\s*\$[\d,]+(?:\.\d+)?\s*[kK]?"
+        r"(?:\s*(?:USD|per\s+(?:year|annum)|annually|/\s*yr|/\s*year))?",
+        text, re.IGNORECASE,
+    )
+    if m:
+        return m.group(0).strip()
+    m = re.search(
+        r"\$[\d,]+(?:\.\d+)?\s*[kK]?\s+(?:to|and)\s+\$[\d,]+(?:\.\d+)?\s*[kK]?"
+        r"(?:\s*(?:USD|per\s+(?:year|annum)|annually|/\s*yr|/\s*year))?",
+        text, re.IGNORECASE,
+    )
+    if m:
+        return m.group(0).strip()
+    return ""
 
 
 def scrape_greenhouse(company: str) -> list[dict]:
@@ -214,6 +262,8 @@ def scrape_greenhouse(company: str) -> list[dict]:
             continue
         loc = j.get("location")
         location = loc.get("name", "") if isinstance(loc, dict) else str(loc or "")
+        raw_html = j.get("content", "")
+        plain = _strip_html(raw_html)
         jobs.append({
             "id": f"gh:{company}:{j['id']}",
             "ats": "greenhouse",
@@ -221,7 +271,9 @@ def scrape_greenhouse(company: str) -> list[dict]:
             "title": title,
             "url": j.get("absolute_url", ""),
             "location": location,
-            "description": _strip_html(j.get("content", "")),
+            "description": plain,
+            "descriptionHtml": _sanitize_html(raw_html),
+            "salary": _extract_salary(plain),
         })
     return jobs
 
@@ -240,6 +292,8 @@ def scrape_lever(company: str) -> list[dict]:
         location = cats.get("location", "") or cats.get("allLocations", "")
         if isinstance(location, list):
             location = ", ".join(location)
+        raw_html = j.get("description", "")
+        plain = j.get("descriptionPlain", "") or _strip_html(raw_html)
         jobs.append({
             "id": f"lv:{company}:{j['id']}",
             "ats": "lever",
@@ -247,7 +301,9 @@ def scrape_lever(company: str) -> list[dict]:
             "title": title,
             "url": j.get("hostedUrl", ""),
             "location": location,
-            "description": _strip_html(j.get("descriptionPlain", j.get("description", ""))),
+            "description": plain,
+            "descriptionHtml": _sanitize_html(raw_html),
+            "salary": _extract_salary(plain),
         })
     return jobs
 
@@ -267,7 +323,8 @@ def scrape_ashby(company: str) -> list[dict]:
         if isinstance(location, dict):
             location = location.get("name", "")
         job_url = j.get("jobUrl", "") or j.get("hostedUrl", "")
-        desc = j.get("descriptionPlain", "") or _strip_html(j.get("descriptionHtml", "") or j.get("description", ""))
+        raw_html = j.get("descriptionHtml", "") or j.get("description", "")
+        plain = j.get("descriptionPlain", "") or _strip_html(raw_html)
         jobs.append({
             "id": f"ab:{company}:{j['id']}",
             "ats": "ashby",
@@ -275,7 +332,9 @@ def scrape_ashby(company: str) -> list[dict]:
             "title": title,
             "url": job_url,
             "location": location,
-            "description": desc,
+            "description": plain,
+            "descriptionHtml": _sanitize_html(raw_html),
+            "salary": _extract_salary(plain),
         })
     return jobs
 
@@ -295,6 +354,7 @@ def scrape_workable(company: str) -> list[dict]:
             location = location.get("name", "")
         shortcode = j.get("shortcode", j.get("id", ""))
         job_url = j.get("url", f"https://apply.workable.com/{company}/j/{shortcode}/")
+        plain = j.get("description", "")
         jobs.append({
             "id": f"wk:{company}:{shortcode}",
             "ats": "workable",
@@ -302,7 +362,9 @@ def scrape_workable(company: str) -> list[dict]:
             "title": title,
             "url": job_url,
             "location": location,
-            "description": j.get("description", ""),
+            "description": plain,
+            "descriptionHtml": "",
+            "salary": _extract_salary(plain),
         })
     return jobs
 
@@ -458,6 +520,55 @@ def generate_digest(conn: sqlite3.Connection):
 
 # ── HTML Dashboard ───────────────────────────────────────────────────────────
 
+def _build_resume_suggestions(breakdown: list[dict]) -> list[dict]:
+    """For each unmatched keyword bucket, return resume improvement tips."""
+    tips_map = {
+        "AI / ML": {
+            "keywords": "AI, machine learning, ML, LLM, NLP, generative AI, deep learning, GPT, transformer models",
+            "bullets": [
+                "Led AI/ML product strategy for [product], driving [X%] adoption among enterprise customers",
+                "Defined and shipped LLM-powered features that reduced [process] time by [X%]",
+                "Partnered with ML engineering to build and deploy generative AI capabilities at scale",
+            ],
+        },
+        "Seniority": {
+            "keywords": "senior, staff, principal, director, lead, head of, VP",
+            "bullets": [
+                "Led cross-functional team of [X] engineers, designers, and data scientists to deliver [product]",
+                "Directed product strategy and roadmap for a [X]-person org generating [$X]M ARR",
+                "Mentored [X] PMs and established product development best practices across the organization",
+            ],
+        },
+        "Domain Fit": {
+            "keywords": "platform, enterprise, infrastructure, workflow, automation, agent, agentic",
+            "bullets": [
+                "Built enterprise platform features serving [X]+ B2B customers with [X]% retention",
+                "Designed workflow automation tools that reduced manual processes by [X%] across [X] teams",
+                "Owned infrastructure product roadmap powering [X]M+ API calls per day",
+            ],
+        },
+        "Industry Verticals": {
+            "keywords": "real estate, proptech, healthcare, health tech, clinical",
+            "bullets": [
+                "Launched [healthcare/real estate] product vertical generating [$X]M in first-year revenue",
+                "Built HIPAA-compliant / proptech solutions used by [X]+ [providers/agents]",
+                "Developed domain-specific features for [industry] reducing customer onboarding time by [X%]",
+            ],
+        },
+    }
+    suggestions = []
+    for b in breakdown:
+        if b["matched"] is None and b["bucket"] in tips_map:
+            tip = tips_map[b["bucket"]]
+            suggestions.append({
+                "bucket": b["bucket"],
+                "weight": b["weight"],
+                "keywords": tip["keywords"],
+                "bullets": tip["bullets"],
+            })
+    return suggestions
+
+
 def generate_html_dashboard(conn: sqlite3.Connection):
     os.makedirs(DIGEST_DIR, exist_ok=True)
     now = datetime.now(timezone.utc)
@@ -476,6 +587,8 @@ def generate_html_dashboard(conn: sqlite3.Connection):
         combined = round(fresh * 0.4 + fit * 0.6, 1)
         breakdown = compute_fit_breakdown(job["title"], job["description"] or "")
         display = DISPLAY_NAMES.get(job["company"], job["company"].replace("-", " ").title())
+        suggestions = _build_resume_suggestions(breakdown) if fit < 75 else []
+        salary = job.get("salary", "") or _extract_salary(job["description"] or "")
         scored.append({
             "id": job["id"],
             "ats": job["ats"],
@@ -484,6 +597,7 @@ def generate_html_dashboard(conn: sqlite3.Connection):
             "title": job["title"],
             "url": job["url"] or "",
             "location": job["location"] or "",
+            "salary": salary,
             "fresh": fresh,
             "fit": fit,
             "tier": t,
@@ -492,11 +606,14 @@ def generate_html_dashboard(conn: sqlite3.Connection):
             "firstSeen": job["first_seen_at"][:10],
             "lastSeen": job["last_seen_at"][:10],
             "breakdown": breakdown,
+            "suggestions": suggestions,
+            "descHtml": (job.get("description_html") or "")[:5000],
             "description": (job["description"] or "")[:3000],
         })
 
     scored.sort(key=lambda j: (TIER_ORDER.get(j["tier"], 9), -j["combined"]))
-    jobs_json = json.dumps(scored, ensure_ascii=False)
+    # Escape </script> inside JSON to avoid breaking the HTML
+    jobs_json = json.dumps(scored, ensure_ascii=False).replace("</", "<\\/")
     gen_time = now.strftime("%Y-%m-%d %H:%M UTC")
 
     html = f"""<!DOCTYPE html>
@@ -519,7 +636,6 @@ background:var(--bg);color:var(--text);line-height:1.5;padding:0}}
 a{{color:var(--accent);text-decoration:none}}
 a:hover{{text-decoration:underline}}
 
-/* Header */
 .header{{background:var(--card);border-bottom:1px solid var(--border);padding:16px 24px;
 position:sticky;top:0;z-index:100;box-shadow:var(--shadow)}}
 .header-row{{display:flex;align-items:center;gap:16px;flex-wrap:wrap;max-width:1400px;margin:0 auto}}
@@ -532,7 +648,6 @@ position:sticky;top:0;z-index:100;box-shadow:var(--shadow)}}
 .stat-gray{{background:var(--gray-bg);color:var(--muted)}}
 .gen-time{{font-size:12px;color:var(--muted)}}
 
-/* Toolbar */
 .toolbar{{background:var(--card);border-bottom:1px solid var(--border);padding:12px 24px}}
 .toolbar-inner{{display:flex;gap:10px;flex-wrap:wrap;align-items:center;max-width:1400px;margin:0 auto}}
 .search-box{{flex:1;min-width:200px;padding:8px 12px;border:1px solid var(--border);
@@ -553,14 +668,11 @@ border:2px solid var(--border);background:var(--card);color:var(--muted);transit
 .btn-export{{background:var(--accent);color:#fff;border:none;font-weight:600}}
 .btn-export:hover{{opacity:.9}}
 
-/* Counter */
 .counter-bar{{max-width:1400px;margin:12px auto 0;padding:0 24px;font-size:13px;color:var(--muted)}}
 
-/* Grid */
 .grid{{max-width:1400px;margin:12px auto;padding:0 24px 40px;
 display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:14px}}
 
-/* Card */
 .card{{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
 padding:16px;box-shadow:var(--shadow);transition:.15s;position:relative;cursor:pointer}}
 .card:hover{{box-shadow:0 4px 12px rgba(0,0,0,.1);transform:translateY(-1px)}}
@@ -571,8 +683,9 @@ padding:16px;box-shadow:var(--shadow);transition:.15s;position:relative;cursor:p
 .card-dismiss{{background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;
 padding:2px 6px;border-radius:4px;line-height:1}}
 .card-dismiss:hover{{background:var(--border);color:var(--text)}}
-.card-meta{{font-size:13px;color:var(--muted);margin:4px 0 10px}}
+.card-meta{{font-size:13px;color:var(--muted);margin:4px 0 6px}}
 .card-meta .company{{font-weight:600;color:var(--text)}}
+.card-salary{{font-size:12px;font-weight:600;color:var(--green);margin-bottom:8px}}
 .tier-tag{{display:inline-block;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600;margin-left:6px}}
 .tier-tag.t-today{{background:var(--red-bg);color:var(--red)}}
 .tier-tag.t-week{{background:var(--amber-bg);color:var(--amber)}}
@@ -599,31 +712,52 @@ background:var(--card);color:var(--text)}}
 .modal-overlay{{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:200;
 justify-content:center;align-items:flex-start;padding:40px 20px;overflow-y:auto}}
 .modal-overlay.open{{display:flex}}
-.modal{{background:var(--card);border-radius:14px;max-width:740px;width:100%;
+.modal{{background:var(--card);border-radius:14px;max-width:780px;width:100%;
 box-shadow:0 20px 60px rgba(0,0,0,.2);padding:28px;position:relative;max-height:85vh;overflow-y:auto}}
 .modal-close{{position:absolute;top:12px;right:16px;background:none;border:none;font-size:24px;
 cursor:pointer;color:var(--muted);line-height:1}}
 .modal-close:hover{{color:var(--text)}}
 .modal h2{{font-size:20px;margin-bottom:4px;padding-right:30px}}
+.modal h4{{font-size:14px;margin-top:18px;margin-bottom:6px;color:var(--text)}}
 .modal .m-meta{{color:var(--muted);font-size:14px;margin-bottom:16px}}
+.modal .m-salary{{font-size:15px;font-weight:700;color:var(--green);margin-bottom:12px}}
 .modal .m-scores{{display:flex;gap:20px;margin-bottom:16px}}
 .modal .m-score-box{{text-align:center;padding:10px 16px;border-radius:var(--radius);background:var(--bg)}}
 .modal .m-score-val{{font-size:28px;font-weight:700}}
 .modal .m-score-lbl{{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}}
-.breakdown-table{{width:100%;border-collapse:collapse;margin:12px 0;font-size:13px}}
+.breakdown-table{{width:100%;border-collapse:collapse;margin:8px 0;font-size:13px}}
 .breakdown-table th{{text-align:left;padding:6px 10px;background:var(--bg);font-weight:600;border-bottom:1px solid var(--border)}}
 .breakdown-table td{{padding:6px 10px;border-bottom:1px solid var(--border)}}
 .breakdown-table .match{{color:var(--green);font-weight:600}}
-.breakdown-table .no-match{{color:var(--muted)}}
-.modal .m-desc{{font-size:13px;line-height:1.7;color:var(--muted);margin:12px 0;
-max-height:250px;overflow-y:auto;padding:12px;background:var(--bg);border-radius:var(--radius)}}
+.breakdown-table .no-match{{color:var(--red);font-weight:600}}
+.modal .m-desc{{font-size:13px;line-height:1.7;color:var(--text);margin:8px 0;
+max-height:300px;overflow-y:auto;padding:14px;background:var(--bg);border-radius:var(--radius)}}
+.modal .m-desc h1,.modal .m-desc h2,.modal .m-desc h3{{font-size:15px;margin:12px 0 6px;color:var(--text)}}
+.modal .m-desc p{{margin:6px 0}}
+.modal .m-desc ul,.modal .m-desc ol{{margin:6px 0;padding-left:20px}}
+.modal .m-desc li{{margin:3px 0}}
+
+/* Gap analysis */
+.gap-section{{background:var(--red-bg);border:1px solid var(--red);border-radius:var(--radius);
+padding:16px;margin:12px 0}}
+.gap-section h4{{color:var(--red);margin:0 0 8px;font-size:14px}}
+.gap-item{{margin:10px 0;padding:10px;background:var(--card);border-radius:8px}}
+.gap-item-head{{font-weight:600;font-size:13px;margin-bottom:4px}}
+.gap-item-head .pts{{color:var(--muted);font-weight:400}}
+.gap-keywords{{font-size:12px;color:var(--accent);margin-bottom:6px}}
+.gap-bullets{{font-size:12px;color:var(--muted);padding-left:16px}}
+.gap-bullets li{{margin:3px 0}}
+.btn-resume{{margin-top:10px;padding:8px 16px;background:var(--red);color:#fff;border:none;
+border-radius:var(--radius);font-weight:600;font-size:13px;cursor:pointer}}
+.btn-resume:hover{{opacity:.9}}
+
 .modal .m-notes{{width:100%;padding:10px;border:1px solid var(--border);border-radius:var(--radius);
 font-size:13px;min-height:70px;background:var(--bg);color:var(--text);resize:vertical;font-family:inherit}}
 .modal .m-notes:focus{{outline:none;border-color:var(--accent)}}
-.modal .m-actions{{display:flex;gap:10px;margin-top:14px}}
+.modal .m-actions{{display:flex;gap:10px;margin-top:14px;flex-wrap:wrap}}
 .btn-apply{{padding:10px 20px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius);
-font-weight:600;font-size:14px;cursor:pointer}}
-.btn-apply:hover{{opacity:.9}}
+font-weight:600;font-size:14px;cursor:pointer;text-decoration:none;text-align:center}}
+.btn-apply:hover{{opacity:.9;text-decoration:none}}
 </style>
 </head>
 <body>
@@ -669,14 +803,16 @@ font-weight:600;font-size:14px;cursor:pointer}}
 <button class="modal-close" onclick="closeModal()">&times;</button>
 <h2 id="mTitle"></h2>
 <div class="m-meta" id="mMeta"></div>
+<div class="m-salary" id="mSalary"></div>
 <div class="m-scores" id="mScores"></div>
 <h4>Fit Score Breakdown</h4>
-<table class="breakdown-table"><thead><tr><th>Category</th><th>Weight</th><th>Matched</th></tr></thead>
+<table class="breakdown-table"><thead><tr><th>Category</th><th>Weight</th><th>Status</th></tr></thead>
 <tbody id="mBreakdown"></tbody></table>
-<h4 style="margin-top:14px">Description</h4>
+<div id="mGap"></div>
+<h4>Job Description</h4>
 <div class="m-desc" id="mDesc"></div>
-<h4 style="margin-top:14px">Notes</h4>
-<textarea class="m-notes" id="mNotes" placeholder="Add your notes here..."></textarea>
+<h4>Your Notes</h4>
+<textarea class="m-notes" id="mNotes" placeholder="Track your progress: referral contacts, follow-up dates, interview prep notes..."></textarea>
 <div class="m-actions">
 <a class="btn-apply" id="mApplyBtn" href="#" target="_blank">Open Application &rarr;</a>
 </div>
@@ -698,12 +834,12 @@ let currentModalId=null;
 function esc(s){{const d=document.createElement('div');d.textContent=s;return d.innerHTML}}
 
 function tierClass(t){{if(t==='Apply Today')return 't-today';if(t==='Apply This Week')return 't-week';return 't-watch'}}
-
 function statusClass(st){{return st?'s-'+st.toLowerCase():''}}
 
 function renderCard(j){{
 const s=state.statuses[j.id]||'New';
 const hasNote=state.notes[j.id]?'<span class="has-note"></span>':'';
+const salaryHtml=j.salary?`<div class="card-salary">${{esc(j.salary)}}</div>`:'';
 return `<div class="card" data-id="${{esc(j.id)}}" onclick="openModal('${{esc(j.id)}}')">
 <div class="card-header">
 <div class="card-title"><a href="${{esc(j.url)}}" target="_blank" onclick="event.stopPropagation()">${{esc(j.title)}}</a>
@@ -712,6 +848,7 @@ ${{j.reposted?'<span class="repost-tag">REPOST</span>':''}}</div>
 <button class="card-dismiss" onclick="event.stopPropagation();dismissJob('${{esc(j.id)}}')" title="Hide">&times;</button>
 </div>
 <div class="card-meta"><span class="company">${{esc(j.company)}}</span> &middot; ${{esc(j.location||'Remote')}}</div>
+${{salaryHtml}}
 <div class="score-bars">
 <div class="score-bar"><div class="score-label"><span>Freshness</span><span>${{j.fresh}}</span></div>
 <div class="bar-track"><div class="bar-fill fresh" style="width:${{j.fresh}}%"></div></div></div>
@@ -778,14 +915,41 @@ document.getElementById('mMeta').innerHTML=
 `<span class="tier-tag ${{tierClass(j.tier)}}">${{j.tier}}</span>`+
 (j.reposted?' <span class="repost-tag">REPOST</span>':'')+
 ` &middot; First seen ${{j.firstSeen}}`;
+const salaryEl=document.getElementById('mSalary');
+salaryEl.textContent=j.salary||'Salary not listed';
+salaryEl.style.color=j.salary?'var(--green)':'var(--muted)';
 document.getElementById('mScores').innerHTML=
 `<div class="m-score-box"><div class="m-score-val" style="color:var(--bar-fresh)">${{j.fresh}}</div><div class="m-score-lbl">Fresh</div></div>`+
 `<div class="m-score-box"><div class="m-score-val" style="color:var(--bar-fit)">${{j.fit}}</div><div class="m-score-lbl">Fit</div></div>`+
 `<div class="m-score-box"><div class="m-score-val" style="color:var(--accent)">${{j.combined}}</div><div class="m-score-lbl">Combined</div></div>`;
+
 document.getElementById('mBreakdown').innerHTML=j.breakdown.map(b=>
 `<tr><td>${{esc(b.bucket)}}</td><td>${{b.weight}} pts</td><td>${{b.matched?
-`<span class="match">${{esc(b.matched)}}</span>`:'<span class="no-match">--</span>'}}</td></tr>`).join('');
-document.getElementById('mDesc').textContent=j.description||'No description available.';
+`<span class="match">Matched: ${{esc(b.matched)}}</span>`:
+`<span class="no-match">Missing</span>'}}</td></tr>`).join('');
+
+/* Gap analysis + resume tips */
+const gapEl=document.getElementById('mGap');
+if(j.fit<75 && j.suggestions && j.suggestions.length>0){{
+let gh=`<div class="gap-section"><h4>Resume Gap Analysis (Fit: ${{j.fit}}/100)</h4>
+<p style="font-size:12px;margin-bottom:8px">You're missing these keyword categories. Add them to your resume to improve your match:</p>`;
+j.suggestions.forEach(s=>{{
+gh+=`<div class="gap-item">
+<div class="gap-item-head">${{esc(s.bucket)}} <span class="pts">(+${{s.weight}} pts if added)</span></div>
+<div class="gap-keywords">Add keywords: ${{esc(s.keywords)}}</div>
+<ul class="gap-bullets">${{s.bullets.map(b=>`<li>${{esc(b)}}</li>`).join('')}}</ul></div>`;
+}});
+gh+=`<button class="btn-resume" onclick="downloadResumeTips('${{esc(j.id)}}')">Download Resume Tips for This Role</button></div>`;
+gapEl.innerHTML=gh;
+}}else{{
+gapEl.innerHTML=j.fit>=75?'<p style="color:var(--green);font-size:13px;margin:8px 0;font-weight:600">Strong fit! Your profile matches well.</p>':'';
+}}
+
+/* Description — render HTML if available, plain text otherwise */
+const descEl=document.getElementById('mDesc');
+if(j.descHtml){{descEl.innerHTML=j.descHtml}}
+else{{descEl.textContent=j.description||'No description available.'}}
+
 document.getElementById('mNotes').value=state.notes[id]||'';
 document.getElementById('mApplyBtn').href=j.url||'#';
 document.getElementById('modalOverlay').classList.add('open');
@@ -796,11 +960,34 @@ if(currentModalId){{const n=document.getElementById('mNotes').value.trim();
 if(n)state.notes[currentModalId]=n;else delete state.notes[currentModalId];saveState(state)}}
 currentModalId=null;document.getElementById('modalOverlay').classList.remove('open');render()}}
 
+function downloadResumeTips(id){{
+const j=JOBS.find(x=>x.id===id);if(!j||!j.suggestions)return;
+let txt=`RESUME TIPS — ${{j.title}} at ${{j.company}}\\n`;
+txt+=`${{('=').repeat(60)}}\\n\\n`;
+txt+=`Your current fit score: ${{j.fit}}/100\\n`;
+txt+=`Potential score with changes: ${{Math.min(100,j.fit+j.suggestions.reduce((a,s)=>a+s.weight,0))}}/100\\n\\n`;
+txt+=`MISSING KEYWORD CATEGORIES:\\n${{('-').repeat(40)}}\\n\\n`;
+j.suggestions.forEach(s=>{{
+txt+=`${{s.bucket}} (+${{s.weight}} points)\\n`;
+txt+=`  Keywords to add: ${{s.keywords}}\\n`;
+txt+=`  Suggested resume bullets:\\n`;
+s.bullets.forEach(b=>{{txt+=`    - ${{b}}\\n`}});
+txt+=`\\n`;
+}});
+txt+=`JOB DESCRIPTION EXCERPT:\\n${{('-').repeat(40)}}\\n`;
+txt+=j.description.substring(0,1500)+'\\n';
+const blob=new Blob([txt],{{type:'text/plain'}});
+const a=document.createElement('a');
+a.href=URL.createObjectURL(blob);
+a.download=`resume-tips-${{j.company.toLowerCase().replace(/\\s+/g,'-')}}-${{j.title.toLowerCase().replace(/[^a-z0-9]+/g,'-').substring(0,40)}}.txt`;
+a.click();
+}}
+
 function exportCSV(){{
 const jobs=getFiltered();
-const hdr='Title,Company,Location,Tier,Freshness,Fit,Combined,URL,Status,First Seen\\n';
+const hdr='Title,Company,Location,Salary,Tier,Freshness,Fit,Combined,URL,Status,First Seen\\n';
 const rows=jobs.map(j=>{{const s=state.statuses[j.id]||'New';
-return [j.title,j.company,j.location,j.tier,j.fresh,j.fit,j.combined,j.url,s,j.firstSeen]
+return [j.title,j.company,j.location,j.salary||'',j.tier,j.fresh,j.fit,j.combined,j.url,s,j.firstSeen]
 .map(v=>`"${{String(v).replace(/"/g,'""')}}"`)
 .join(',')}}).join('\\n');
 const blob=new Blob([hdr+rows],{{type:'text/csv'}});const a=document.createElement('a');

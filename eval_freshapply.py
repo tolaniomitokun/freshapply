@@ -1,0 +1,358 @@
+#!/usr/bin/env python3
+"""
+FreshApply Evals — deterministic quality checks on salary extraction,
+PM title filtering, work type classification, and description sanitization.
+
+Usage:
+    python3 eval_freshapply.py
+"""
+import os
+import re
+import sqlite3
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from freshapply import (
+    _extract_salary,
+    _sanitize_html,
+    _strip_html,
+    PM_RE,
+    PM_EXCLUDE_RE,
+)
+
+DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "freshapply.db")
+
+# ── Eval helpers ─────────────────────────────────────────────────────────────
+
+def _has_dollar_range(text: str) -> bool:
+    """Check if text contains a salary-like $X - $Y pattern (not revenue/valuation)."""
+    # Must have two dollar amounts connected by a separator (-, to, and)
+    _cur = r"(?:(?:USD|CAD|GBP|EUR)\s*)?"
+    _amt = r"\$[\d,]+(?:\.\d+)?\s*[kK]?"
+    _suf = r"(?:\s*(?:USD|CAD|GBP|EUR)\+?)?"
+    pat1 = _cur + _amt + _suf + r"\s*[-–—~]+\s*" + _cur + _amt
+    pat2 = _cur + _amt + _suf + r"\s+(?:to|and)\s+" + _cur + _amt
+    if re.search(pat1, text, re.IGNORECASE) or re.search(pat2, text, re.IGNORECASE):
+        # Exclude revenue/valuation patterns like "$2M", "$10B", "$100 billion"
+        for m in re.finditer(pat1, text, re.IGNORECASE):
+            if not re.search(r"\$[\d,]+\s*[MBmb]", m.group()):
+                return True
+        for m in re.finditer(pat2, text, re.IGNORECASE):
+            if not re.search(r"\$[\d,]+\s*[MBmb]", m.group()):
+                return True
+    return False
+
+
+def _count_salary_ranges(text: str) -> int:
+    """Count distinct salary range patterns in text."""
+    _cur = r"(?:(?:USD|CAD|GBP|EUR)\s*)?"
+    _amt = r"\$[\d,]+(?:\.\d+)?\s*[kK]?"
+    _suf = r"(?:\s*(?:USD|CAD|GBP|EUR)\+?)?"
+    pat = _cur + _amt + _suf + r"\s*[-–—~]+\s*" + _cur + _amt + _suf
+    pat2 = _cur + _amt + _suf + r"\s+(?:to|and)\s+" + _cur + _amt + _suf
+    return len(re.findall(pat, text, re.IGNORECASE)) + len(re.findall(pat2, text, re.IGNORECASE))
+
+
+# ── Eval 1: Salary Extraction ────────────────────────────────────────────────
+
+def eval_salary(conn):
+    print("\nSALARY EXTRACTION")
+    print("-" * 60)
+
+    rows = conn.execute("SELECT id, company, title, description, salary FROM jobs").fetchall()
+    total = len(rows)
+
+    correct_empty = 0      # No salary in desc, correctly ""
+    correct_found = 0      # Salary in desc, correctly extracted
+    missed = []            # Salary in desc, but extracted ""
+    multi_range = []       # Multiple ranges, verify full span captured
+    changed = []           # Extraction result differs from stored value
+
+    for jid, company, title, desc, stored_salary in rows:
+        plain = _strip_html(desc) if desc else ""
+        extracted = _extract_salary(plain)
+        has_salary = _has_dollar_range(plain)
+        range_count = _count_salary_ranges(plain)
+
+        if not has_salary and not extracted:
+            correct_empty += 1
+        elif has_salary and extracted:
+            correct_found += 1
+            if range_count > 1:
+                multi_range.append((jid, title, range_count, extracted))
+            if stored_salary and stored_salary != extracted:
+                changed.append((jid, title, stored_salary, extracted))
+        elif has_salary and not extracted:
+            missed.append((jid, title, plain[:200]))
+        else:
+            correct_found += 1  # extracted something from non-obvious pattern
+
+    pass_count = correct_empty + correct_found
+    print(f"  Total jobs: {total}")
+    print(f"  \u2705 {correct_empty} jobs: no salary in description, correctly returned \"\"")
+    print(f"  \u2705 {correct_found} jobs: salary correctly extracted")
+
+    if missed:
+        print(f"  \u26a0\ufe0f  {len(missed)} jobs: salary in description but not extracted")
+        for jid, title, snippet in missed[:5]:
+            # Find the dollar amount in snippet
+            m = re.search(r"\$[\d,]+", snippet)
+            ctx = m.group(0) if m else "..."
+            print(f"    [MISSED] {jid} \"{title}\" — contains {ctx}")
+
+    if multi_range:
+        print(f"  \u2139\ufe0f  {len(multi_range)} jobs: multiple salary ranges merged")
+        for jid, title, count, extracted in multi_range[:5]:
+            print(f"    [MERGED] {jid} \"{title}\" — {count} ranges → {extracted}")
+
+    if changed:
+        print(f"  \u2139\ufe0f  {len(changed)} jobs: extraction improved from stored value")
+        for jid, title, old, new in changed[:5]:
+            print(f"    [UPDATED] {jid} \"{title}\"")
+            print(f"      was: {old}")
+            print(f"      now: {new}")
+
+    return len(missed)
+
+
+# ── Eval 2: PM Title Filtering ───────────────────────────────────────────────
+
+def eval_pm_titles(conn):
+    print("\nPM TITLE FILTERING")
+    print("-" * 60)
+
+    # Curated test cases
+    should_match = [
+        "Product Manager",
+        "Senior Product Manager",
+        "Staff Product Manager, AI Platform",
+        "Principal Product Manager",
+        "Product Manager, Enterprise AI",
+        "Director of Product",
+        "Director, Product Management",
+        "Head of Product",
+        "VP of Product",
+        "Vice President, Product Management",
+        "Product Lead, AI",
+        "Group PM",
+        "Senior PM",
+        "Product Manager, Gemini App",
+        "Sr. Product Manager, AI Capabilities",
+    ]
+
+    should_not_match = [
+        "Project Manager",
+        "Senior Project Manager",
+        "Program Manager",
+        "Technical Program Manager",
+        "Product Marketing Manager",
+        "Product Designer",
+        "Product Counsel",
+        "Product Communications Manager",
+        "Software Engineer, Product",
+        "Sales Engineer, Product",
+        "Legal Product Counsel",
+        "Video Product Manager",  # excluded by pattern
+        "Product Launch Manager",
+        "Product Account Manager",
+    ]
+
+    # Test inclusions
+    include_pass = 0
+    include_fail = []
+    for title in should_match:
+        if PM_RE.search(title) and not PM_EXCLUDE_RE.search(title):
+            include_pass += 1
+        else:
+            include_fail.append(title)
+
+    # Test exclusions
+    exclude_pass = 0
+    exclude_fail = []
+    for title in should_not_match:
+        if not PM_RE.search(title) or PM_EXCLUDE_RE.search(title):
+            exclude_pass += 1
+        else:
+            exclude_fail.append(title)
+
+    total_tests = len(should_match) + len(should_not_match)
+    print(f"  Curated test cases: {total_tests}")
+    print(f"  \u2705 {include_pass}/{len(should_match)} correct inclusions")
+    if include_fail:
+        for t in include_fail:
+            print(f"    \u274c FALSE NEGATIVE: \"{t}\" should match but didn't")
+
+    print(f"  \u2705 {exclude_pass}/{len(should_not_match)} correct exclusions")
+    if exclude_fail:
+        for t in exclude_fail:
+            print(f"    \u274c FALSE POSITIVE: \"{t}\" matched but shouldn't")
+
+    # Scan DB for suspicious titles
+    db_titles = conn.execute("SELECT id, title FROM jobs").fetchall()
+    suspicious = []
+    for jid, title in db_titles:
+        t_lower = title.lower()
+        if "project" in t_lower or "program" in t_lower:
+            suspicious.append((jid, title))
+
+    print(f"\n  Database scan ({len(db_titles)} jobs):")
+    if suspicious:
+        print(f"  \u26a0\ufe0f  {len(suspicious)} suspicious titles found:")
+        for jid, title in suspicious[:10]:
+            print(f"    [{jid}] \"{title}\"")
+    else:
+        print(f"  \u2705 No project/program manager titles in database")
+
+    return len(include_fail) + len(exclude_fail) + len(suspicious)
+
+
+# ── Eval 3: Work Type Classification ─────────────────────────────────────────
+
+def eval_work_type(conn):
+    print("\nWORK TYPE CLASSIFICATION")
+    print("-" * 60)
+
+    rows = conn.execute("SELECT id, title, location, description FROM jobs").fetchall()
+    total = len(rows)
+
+    counts = {"Remote": 0, "Hybrid": 0, "On-site": 0}
+    issues = []
+
+    for jid, title, location, desc in rows:
+        loc_lower = (location or "").lower()
+        desc_lower = (desc or "").lower()[:500]
+
+        # Replicate the classification logic
+        if "hybrid" in loc_lower or "hybrid" in desc_lower:
+            work_type = "Hybrid"
+        elif "remote" in loc_lower:
+            work_type = "Remote"
+        elif not location or not location.strip():
+            work_type = "Remote"
+        else:
+            work_type = "On-site"
+
+        counts[work_type] = counts.get(work_type, 0) + 1
+
+        # Check for potential misclassifications
+        if work_type == "On-site":
+            # Does description mention remote eligibility?
+            if re.search(r"remote\s*(?:eligible|friendly|ok|okay|option|possible|available)", desc_lower):
+                issues.append((jid, title, location, "On-site but description mentions remote eligibility"))
+            elif "remote" in desc_lower[:200] and "not remote" not in desc_lower[:200] and "no remote" not in desc_lower[:200]:
+                pass  # Too noisy — "remote" appears in many contexts
+
+        if work_type == "Remote" and location and location.strip():
+            # Has a location but classified as remote — verify "remote" is in location
+            if "remote" not in loc_lower:
+                issues.append((jid, title, location, f"Classified Remote but location is \"{location}\""))
+
+    print(f"  Total jobs: {total}")
+    for wt, count in counts.items():
+        print(f"  \u2705 {count} {wt}")
+
+    if issues:
+        print(f"\n  \u26a0\ufe0f  {len(issues)} possible misclassifications:")
+        for jid, title, loc, reason in issues[:10]:
+            print(f"    [{jid[:30]}] \"{title[:40]}\" — {reason}")
+    else:
+        print(f"  \u2705 No misclassifications detected")
+
+    return len(issues)
+
+
+# ── Eval 4: Description Sanitization ─────────────────────────────────────────
+
+def eval_sanitization(conn):
+    print("\nDESCRIPTION SANITIZATION")
+    print("-" * 60)
+
+    rows = conn.execute("SELECT id, title, description_html FROM jobs WHERE description_html != ''").fetchall()
+    total = len(rows)
+
+    clean = 0
+    issues = []
+
+    for jid, title, raw_html in rows:
+        sanitized = _sanitize_html(raw_html)
+
+        problems = []
+        # Check for residual HTML structure tags
+        if re.search(r"<(?:div|script|style|iframe|form)\b", sanitized, re.IGNORECASE):
+            problems.append("residual HTML tags")
+        # Check for entity-encoded HTML (indicates unescape didn't run)
+        if "&lt;div" in sanitized or "&lt;p&gt;" in sanitized:
+            problems.append("entity-encoded HTML")
+        # Check for &nbsp;
+        if "&nbsp;" in sanitized:
+            problems.append("contains &nbsp;")
+        # Check for pay-transparency boilerplate
+        if "pay-transparency" in sanitized.lower() or "content-conclusion" in sanitized.lower():
+            problems.append("ATS boilerplate not stripped")
+        # Check for class/style attributes
+        if re.search(r'\bclass="', sanitized):
+            problems.append("class attributes remaining")
+
+        if problems:
+            issues.append((jid, title, problems))
+        else:
+            clean += 1
+
+    print(f"  Total descriptions: {total}")
+    print(f"  \u2705 {clean} clean (no residual HTML/entities/boilerplate)")
+
+    if issues:
+        print(f"  \u26a0\ufe0f  {len(issues)} have residual issues:")
+        for jid, title, probs in issues[:10]:
+            print(f"    [{jid[:30]}] \"{title[:40]}\" — {', '.join(probs)}")
+    else:
+        print(f"  \u2705 All descriptions properly sanitized")
+
+    return len(issues)
+
+
+# ── Main ─────────────────────────────────────────────────────────────────────
+
+def main():
+    if not os.path.exists(DB_PATH):
+        print(f"Error: Database not found at {DB_PATH}")
+        print("Run 'python3 freshapply.py' first to populate the database.")
+        sys.exit(1)
+
+    conn = sqlite3.connect(DB_PATH)
+
+    print("=" * 60)
+    print("  FreshApply Evals")
+    print("=" * 60)
+
+    warnings = 0
+    failures = 0
+
+    f = eval_salary(conn)
+    failures += f
+
+    f = eval_pm_titles(conn)
+    failures += f
+
+    f = eval_work_type(conn)
+    warnings += f
+
+    f = eval_sanitization(conn)
+    warnings += f
+
+    conn.close()
+
+    print("\n" + "=" * 60)
+    status = "\u2705 ALL PASS" if failures == 0 and warnings == 0 else ""
+    if failures:
+        status = f"\u274c {failures} failure(s)"
+    elif warnings:
+        status = f"\u26a0\ufe0f  {warnings} warning(s), 0 failures"
+    print(f"  Summary: 4 evals — {status}")
+    print("=" * 60)
+
+    sys.exit(1 if failures > 0 else 0)
+
+
+if __name__ == "__main__":
+    main()

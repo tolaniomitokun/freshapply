@@ -288,6 +288,8 @@ def _sanitize_html(raw: str) -> str:
     text = html_mod.unescape(raw)
     text = re.sub(r"<script[^>]*>.*?</script>", "", text, flags=re.DOTALL | re.IGNORECASE)
     text = re.sub(r"<style[^>]*>.*?</style>", "", text, flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(r"<iframe[^>]*>.*?</iframe>", "", text, flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(r"<iframe[^>]*/?>", "", text, flags=re.IGNORECASE)
     text = re.sub(r'\s+on\w+\s*=\s*"[^"]*"', "", text)
     text = re.sub(r"\s+on\w+\s*=\s*'[^']*'", "", text)
     # Remove pay-transparency / compensation / conclusion sections entirely
@@ -316,24 +318,32 @@ def _sanitize_html(raw: str) -> str:
 
 
 def _extract_salary(text: str) -> str:
-    """Try to pull a salary range from description text."""
+    """Pull salary range(s) from description. Merges multiple location-based ranges."""
     if not text:
         return ""
-    m = re.search(
-        r"\$[\d,]+(?:\.\d+)?\s*[kK]?\s*[-–—~]+\s*\$[\d,]+(?:\.\d+)?\s*[kK]?"
-        r"(?:\s*(?:USD|per\s+(?:year|annum)|annually|/\s*yr|/\s*year))?",
-        text, re.IGNORECASE,
-    )
-    if m:
-        return m.group(0).strip()
-    m = re.search(
-        r"\$[\d,]+(?:\.\d+)?\s*[kK]?\s+(?:to|and)\s+\$[\d,]+(?:\.\d+)?\s*[kK]?"
-        r"(?:\s*(?:USD|per\s+(?:year|annum)|annually|/\s*yr|/\s*year))?",
-        text, re.IGNORECASE,
-    )
-    if m:
-        return m.group(0).strip()
-    return ""
+    # Matches: $X - $Y, $X USD - $Y USD, CAD $X - CAD $Y
+    _cur = r"(?:(?:USD|CAD|GBP|EUR)\s*)?"
+    _amt = r"\$[\d,]+(?:\.\d+)?\s*[kK]?"
+    _suf = r"(?:\s*(?:USD|CAD|GBP|EUR)\+?)?"
+    _end = r"(?:\s*(?:per\s+(?:year|annum)|annually|/\s*yr|/\s*year))?"
+    pat1 = _cur + _amt + _suf + r"\s*[-–—~]+\s*" + _cur + _amt + _suf + _end
+    pat2 = _cur + _amt + _suf + r"\s+(?:to|and)\s+" + _cur + _amt + _suf + _end
+    matches = re.findall(pat1, text, re.IGNORECASE) + re.findall(pat2, text, re.IGNORECASE)
+    if not matches:
+        return ""
+    if len(matches) == 1:
+        return matches[0].strip()
+    # Multiple ranges (e.g. location-based) — find overall min and max
+    all_vals = []
+    for m in matches:
+        for raw, k in re.findall(r"\$([\d,]+(?:\.\d+)?)\s*([kK])?", m):
+            v = float(raw.replace(",", ""))
+            if k:
+                v *= 1000
+            all_vals.append(int(v))
+    if not all_vals:
+        return matches[0].strip()
+    return f"${min(all_vals):,} - ${max(all_vals):,}"
 
 
 def scrape_greenhouse(company: str) -> list[dict]:

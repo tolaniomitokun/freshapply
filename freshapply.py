@@ -129,6 +129,16 @@ COUNTRY_CODES: dict[str, str] = {
     "uae": "AE", "united arab emirates": "AE", "qatar": "QA", "saudi arabia": "SA",
 }
 
+REGION_COUNTRIES: dict[str, set[str]] = {
+    "namer": {"US", "CA"},
+    "north america": {"US", "CA"},
+    "americas": {"US", "CA"},
+    "latam": {"MX", "BR"},
+    "emea": {"UK", "DE", "FR", "NL", "IE", "IL", "ES", "CH"},
+    "europe": {"UK", "DE", "FR", "NL", "IE", "ES", "CH", "SE"},
+    "apac": {"IN", "SG", "JP", "AU", "KR"},
+}
+
 KNOWN_CITIES: dict[str, str] = {
     "san francisco": "US", "new york": "US", "new york city": "US", "nyc": "US",
     "seattle": "US", "austin": "US", "chicago": "US", "los angeles": "US",
@@ -153,13 +163,21 @@ def _detect_countries(location: str) -> set[str]:
     if not location or not location.strip():
         return set()
     countries: set[str] = set()
-    # Split multi-location strings on | and ;
-    parts = re.split(r"\s*[|;]\s*", location)
+    # Split multi-location strings on | ; and •
+    parts = re.split(r"\s*[|;•]\s*|\s+or\s+", location)
     for part in parts:
         pl = part.lower().strip()
         if not pl:
             continue
         found = False
+        # Check for multi-country regions first (NAMER, EMEA, etc.)
+        for region, codes in REGION_COUNTRIES.items():
+            if re.search(r"\b" + re.escape(region) + r"\b", pl):
+                countries.update(codes)
+                found = True
+                break
+        if found:
+            continue
         # Check for country names/codes (word boundary)
         for name, code in COUNTRY_CODES.items():
             if re.search(r"\b" + re.escape(name) + r"\b", pl):
@@ -191,6 +209,33 @@ def _city_in_location(user_city: str, location: str) -> bool:
     loc_lower = location.lower()
     city_name = user_city.lower().split(",")[0].strip()
     return city_name in loc_lower
+
+
+def _is_region_only(location: str) -> bool:
+    """True if location is only a region/country name with no specific city.
+
+    "NAMER", "United States", "North America" → True (no city)
+    "San Francisco, CA", "Sunnyvale, California, United States" → False (has city)
+    """
+    if not location or not location.strip():
+        return True
+    parts = re.split(r"\s*[|;•]\s*|\s+or\s+", location)
+    for part in parts:
+        part = part.strip()
+        if not part:
+            continue
+        part_lower = part.lower()
+        # If this part has a comma + state abbreviation pattern → specific city
+        if re.search(r",\s*[A-Z]{2}\b", part):
+            return False
+        # If this part contains a known city name → specific city
+        for city in KNOWN_CITIES:
+            if city in part_lower:
+                return False
+        # If this part has a comma → likely "City, State" or "City, Country" → specific
+        if "," in part:
+            return False
+    return True
 
 
 def _classify_location_flag(
@@ -854,6 +899,8 @@ def generate_html_dashboard(conn: sqlite3.Connection):
         elif "remote" in loc_lower:
             work_type = "Remote"
         elif not job["location"] or not job["location"].strip():
+            work_type = "Remote"
+        elif _is_region_only(job["location"]):
             work_type = "Remote"
         else:
             work_type = "On-site"

@@ -18,6 +18,7 @@ from freshapply import (
     _strip_html,
     _detect_countries,
     _classify_location_flag,
+    _is_region_only,
     PM_RE,
     PM_EXCLUDE_RE,
 )
@@ -231,6 +232,8 @@ def eval_work_type(conn):
             work_type = "Remote"
         elif not location or not location.strip():
             work_type = "Remote"
+        elif _is_region_only(location):
+            work_type = "Remote"
         else:
             work_type = "On-site"
 
@@ -246,7 +249,8 @@ def eval_work_type(conn):
 
         if work_type == "Remote" and location and location.strip():
             # Has a location but classified as remote — verify "remote" is in location
-            if "remote" not in loc_lower:
+            # Region-only locations (NAMER, United States, etc.) are correctly Remote
+            if "remote" not in loc_lower and not _is_region_only(location):
                 issues.append((jid, title, location, f"Classified Remote but location is \"{location}\""))
 
     print(f"  Total jobs: {total}")
@@ -342,6 +346,10 @@ def eval_location_detection(conn):
         ("Zurich, Switzerland", {"CH"}),
         ("Mountain View, California, US; New York City, NY", {"US"}),
         ("Doha, Qatar ; Dubai, UAE", {"QA", "AE"}),
+        ("NAMER", {"US", "CA"}),
+        ("North America", {"US", "CA"}),
+        ("United States", {"US"}),
+        ("San Francisco, CA \u2022 New York, NY \u2022 United States", {"US"}),
     ]
 
     pass_count = 0
@@ -358,6 +366,40 @@ def eval_location_detection(conn):
         for loc, expected, detected in fail_cases:
             print(f"    \u274c \"{loc}\" — expected {expected}, got {detected}")
 
+    # Test _is_region_only
+    region_tests = [
+        ("NAMER", True),
+        ("North America", True),
+        ("United States", True),
+        ("United States ", True),
+        ("US", True),
+        ("Europe", True),
+        ("", True),
+        ("San Francisco, CA", False),
+        ("Sunnyvale, California, United States", False),
+        ("New York, New York, USA", False),
+        ("San Mateo, CA United States", False),
+        ("San Francisco, CA \u2022 New York, NY \u2022 United States", False),
+        ("London", False),
+        ("Bangalore", False),
+        ("Singapore", False),
+        ("Tel Aviv", False),
+    ]
+
+    region_pass = 0
+    region_fail = []
+    for loc, expected in region_tests:
+        result = _is_region_only(loc)
+        if result == expected:
+            region_pass += 1
+        else:
+            region_fail.append((loc, expected, result))
+
+    print(f"  Region-only detection: {region_pass}/{len(region_tests)} correct")
+    if region_fail:
+        for loc, expected, result in region_fail:
+            print(f"    \u274c \"{loc}\" — expected {expected}, got {result}")
+
     # Test flag classification (user = US, Dallas, TX)
     flag_tests = [
         ("Remote - US", "Remote", "US", "Dallas, TX", ""),
@@ -370,6 +412,8 @@ def eval_location_detection(conn):
         ("", "Remote", "US", "Dallas, TX", ""),
         ("Paris, France", "On-site", "US", "Dallas, TX", "International"),
         ("San Francisco, CA", "On-site", "", "", ""),  # No config = no flag
+        ("NAMER", "Remote", "US", "Dallas, TX", ""),  # Region → Remote → no flag
+        ("North America", "Remote", "CA", "Toronto", ""),  # CA user in NA → no flag
     ]
 
     flag_pass = 0

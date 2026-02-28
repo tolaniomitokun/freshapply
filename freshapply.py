@@ -142,31 +142,57 @@ RESUME_DATA = {
 # ── ATS company rosters ─────────────────────────────────────────────────────
 
 GREENHOUSE_COMPANIES = [
-    "anthropic", "stripe", "databricks", "gleanwork", "vercel",
-    "grammarly", "runwayml", "urbancompass", "scaleai", "figma", "hebbia",
+    # AI-native
+    "anthropic", "appliedintuition", "arizeai", "assemblyai", "cresta",
+    "deepmind", "descript", "fireworksai", "inflectionai", "nuro",
+    "sambanovasystems", "snorkelai", "stabilityai", "togetherai",
+    # AI-heavy tech
+    "airbnb", "airtable", "amplitude", "brex", "coinbase", "databricks",
+    "datadog", "figma", "gitlab", "gleanwork", "gongio", "grammarly",
+    "hebbia", "onetrust", "runwayml", "samsara", "scaleai", "stripe",
+    "twilio", "urbancompass", "vercel", "verkada",
 ]
 
 LEVER_COMPANIES = [
-    "mistral",
+    "mistral", "plaid", "zoox",
 ]
 
 ASHBY_COMPANIES = [
-    "openai", "cohere", "notion", "perplexity", "cursor", "replit",
-    "harvey", "ramp", "decagon",
+    # AI-native
+    "anyscale", "baseten", "character", "cohere", "deepgram", "elevenlabs",
+    "langchain", "modal", "openai", "pinecone", "sierra", "twelve-labs",
+    "writer",
+    # AI-heavy tech
+    "cursor", "decagon", "harvey", "linear", "notion", "perplexity",
+    "ramp", "replit", "rula", "zapier",
 ]
 
 WORKABLE_COMPANIES = [
-    "huggingface",
+    "huggingface", "kody", "leadtech", "smeetz",
 ]
 
 # Friendly display names (board slug → label)
 DISPLAY_NAMES = {
-    "gleanwork": "Glean",
-    "runwayml": "Runway",
-    "huggingface": "Hugging Face",
-    "scaleai": "Scale AI",
-    "urbancompass": "Compass",
+    "appliedintuition": "Applied Intuition",
+    "arizeai": "Arize AI",
+    "assemblyai": "AssemblyAI",
+    "character": "Character.AI",
     "cursor": "Cursor",
+    "elevenlabs": "ElevenLabs",
+    "fireworksai": "Fireworks AI",
+    "gleanwork": "Glean",
+    "gongio": "Gong",
+    "huggingface": "Hugging Face",
+    "inflectionai": "Inflection AI",
+    "leadtech": "Leadtech",
+    "runwayml": "Runway",
+    "sambanovasystems": "SambaNova Systems",
+    "scaleai": "Scale AI",
+    "snorkelai": "Snorkel AI",
+    "stabilityai": "Stability AI",
+    "togetherai": "Together AI",
+    "twelve-labs": "Twelve Labs",
+    "urbancompass": "Compass",
 }
 
 # ── PM keyword filter ────────────────────────────────────────────────────────

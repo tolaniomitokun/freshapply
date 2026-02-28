@@ -1,6 +1,6 @@
 # FreshApply
 
-A zero-dependency Python tool that scrapes PM and AI PM job postings from 22 top tech companies, scores them on freshness and fit, and generates an interactive HTML dashboard you can open in any browser.
+A zero-dependency Python tool that scrapes PM and AI PM job postings from 65+ tech companies, scores them on freshness and fit, and generates an interactive HTML dashboard you can open in any browser.
 
 ## Quick Start
 
@@ -22,14 +22,14 @@ That's it. No `pip install`, no API keys, no config files. Just Python 3.10+ sta
 6. **Prioritizes** into three tiers: Apply Today, Apply This Week, Watch List
 7. **Generates** a Markdown digest and an interactive HTML dashboard
 
-## Companies Tracked
+## Companies Tracked (65+)
 
 | ATS | Companies |
 |---|---|
-| **Greenhouse** | Anthropic, Stripe, Databricks, Glean, Vercel, Grammarly, Runway, Compass, Scale AI, Figma, Hebbia |
-| **Ashby** | OpenAI, Cohere, Notion, Perplexity, Cursor, Replit, Harvey, Ramp, Decagon |
-| **Lever** | Mistral |
-| **Workable** | Hugging Face |
+| **Greenhouse** | Airbnb, Airtable, Amplitude, Anthropic, Applied Intuition, Arize AI, AssemblyAI, Brex, Coinbase, Compass, Cresta, Databricks, Datadog, DeepMind, Descript, Figma, Fireworks AI, GitLab, Glean, Gong, Grammarly, Hebbia, Inflection AI, Nuro, OneTrust, Runway, SambaNova Systems, Samsara, Scale AI, Snorkel AI, Stability AI, Stripe, Together AI, Twilio, Vercel, Verkada |
+| **Ashby** | Anyscale, Baseten, Character.AI, Cohere, Cursor, Decagon, Deepgram, ElevenLabs, Harvey, LangChain, Linear, Modal, Notion, OpenAI, Perplexity, Pinecone, Ramp, Replit, Rula, Sierra, Twelve Labs, Writer, Zapier |
+| **Lever** | Mistral, Plaid, Zoox |
+| **Workable** | Hugging Face, Kody, Leadtech, Smeetz |
 
 ## Dashboard Features
 

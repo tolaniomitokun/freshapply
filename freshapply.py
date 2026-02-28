@@ -41,6 +41,8 @@ else:
         "experience": [],
         "tools": {},
         "education": "",
+        "country": "",
+        "city": "",
     }
 
 # ── ATS company rosters ─────────────────────────────────────────────────────
@@ -98,6 +100,127 @@ DISPLAY_NAMES = {
     "twelve-labs": "Twelve Labs",
     "urbancompass": "Compass",
 }
+
+# ── Location detection for country-aware flagging ────────────────────────────
+
+US_STATES = {
+    "AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN",
+    "IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV",
+    "NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN",
+    "TX","UT","VT","VA","WA","WV","WI","WY","DC",
+}
+
+CA_PROVINCES = {
+    "AB","BC","MB","NB","NL","NS","NT","NU","ON","PE","QC","SK","YT",
+}
+
+COUNTRY_CODES: dict[str, str] = {
+    "united states": "US", "united states of america": "US", "us": "US", "usa": "US",
+    "canada": "CA",
+    "united kingdom": "UK", "england": "UK", "uk": "UK",
+    "germany": "DE", "france": "FR", "netherlands": "NL",
+    "ireland": "IE", "israel": "IL", "spain": "ES", "italy": "IT",
+    "sweden": "SE", "norway": "NO", "denmark": "DK", "finland": "FI",
+    "switzerland": "CH", "austria": "AT", "belgium": "BE", "portugal": "PT",
+    "poland": "PL",
+    "australia": "AU", "india": "IN", "singapore": "SG", "japan": "JP",
+    "south korea": "KR", "china": "CN", "taiwan": "TW",
+    "brazil": "BR", "mexico": "MX",
+    "uae": "AE", "united arab emirates": "AE", "qatar": "QA", "saudi arabia": "SA",
+}
+
+KNOWN_CITIES: dict[str, str] = {
+    "san francisco": "US", "new york": "US", "new york city": "US", "nyc": "US",
+    "seattle": "US", "austin": "US", "chicago": "US", "los angeles": "US",
+    "mountain view": "US", "palo alto": "US", "menlo park": "US",
+    "sunnyvale": "US", "redwood city": "US", "san mateo": "US",
+    "san jose": "US", "miami": "US", "dallas": "US", "houston": "US",
+    "boston": "US", "denver": "US", "portland": "US", "phoenix": "US",
+    "salt lake city": "US", "washington": "US", "atlanta": "US",
+    "toronto": "CA", "vancouver": "CA", "montreal": "CA", "ottawa": "CA",
+    "london": "UK", "edinburgh": "UK", "manchester": "UK",
+    "dublin": "IE", "paris": "FR", "berlin": "DE", "munich": "DE",
+    "amsterdam": "NL", "zurich": "CH", "barcelona": "ES", "stockholm": "SE",
+    "tel aviv": "IL", "singapore": "SG", "tokyo": "JP", "seoul": "KR",
+    "bangalore": "IN", "bengaluru": "IN", "mumbai": "IN", "hyderabad": "IN",
+    "sydney": "AU", "melbourne": "AU",
+    "dubai": "AE", "riyadh": "SA",
+}
+
+
+def _detect_countries(location: str) -> set[str]:
+    """Return set of ISO country codes detected in a location string."""
+    if not location or not location.strip():
+        return set()
+    countries: set[str] = set()
+    # Split multi-location strings on | and ;
+    parts = re.split(r"\s*[|;]\s*", location)
+    for part in parts:
+        pl = part.lower().strip()
+        if not pl:
+            continue
+        found = False
+        # Check for country names/codes (word boundary)
+        for name, code in COUNTRY_CODES.items():
+            if re.search(r"\b" + re.escape(name) + r"\b", pl):
+                countries.add(code)
+                found = True
+                break
+        if found:
+            continue
+        # Check for US state abbreviation: "City, CA" pattern
+        state_m = re.search(r",\s*([A-Z]{2})\b", part)
+        if state_m:
+            abbr = state_m.group(1)
+            if abbr in US_STATES:
+                countries.add("US")
+                continue
+            if abbr in CA_PROVINCES:
+                countries.add("CA")
+                continue
+        # Fallback: known city names
+        for city, code in KNOWN_CITIES.items():
+            if city in pl:
+                countries.add(code)
+                break
+    return countries
+
+
+def _city_in_location(user_city: str, location: str) -> bool:
+    """Check if user's city name appears in the job location string."""
+    loc_lower = location.lower()
+    city_name = user_city.lower().split(",")[0].strip()
+    return city_name in loc_lower
+
+
+def _classify_location_flag(
+    location: str, work_type: str, user_country: str, user_city: str
+) -> str:
+    """Classify location flag: '' (local), 'Relocation', or 'International'."""
+    if not user_country:
+        return ""
+    user_cc = user_country.upper().strip()
+    job_countries = _detect_countries(location)
+
+    if work_type == "Remote":
+        if not job_countries:
+            return ""  # Global remote — no flag
+        if user_cc in job_countries:
+            return ""
+        return "International"
+
+    # On-site or Hybrid
+    if not job_countries:
+        return ""  # No location info — can't determine
+    if user_cc not in job_countries:
+        return "International"
+    # Same country — check city
+    if not user_city:
+        return ""
+    if _city_in_location(user_city, location):
+        return ""
+    return "Relocation"
+
 
 # ── PM keyword filter ────────────────────────────────────────────────────────
 
@@ -706,6 +829,8 @@ def generate_html_dashboard(conn: sqlite3.Connection):
     rows = conn.execute("SELECT * FROM jobs").fetchall()
     cols = [d[0] for d in conn.execute("SELECT * FROM jobs LIMIT 0").description]
 
+    user_country = RESUME_DATA.get("country", "")
+    user_city = RESUME_DATA.get("city", "")
     scored = []
     for row in rows:
         job = dict(zip(cols, row))
@@ -732,6 +857,9 @@ def generate_html_dashboard(conn: sqlite3.Connection):
             work_type = "Remote"
         else:
             work_type = "On-site"
+        location_flag = _classify_location_flag(
+            job["location"] or "", work_type, user_country, user_city
+        )
         scored.append({
             "id": job["id"],
             "ats": job["ats"],
@@ -741,6 +869,7 @@ def generate_html_dashboard(conn: sqlite3.Connection):
             "url": job["url"] or "",
             "location": job["location"] or "",
             "workType": work_type,
+            "locationFlag": location_flag,
             "salary": salary,
             "fresh": fresh,
             "fit": fit,
@@ -838,6 +967,10 @@ background:var(--bg);color:var(--muted);min-width:16px;text-align:center;line-he
 .chip.active[data-wt="Remote"]{{background:#dcfce7;border-color:#86efac;color:#166534}}
 .chip.active[data-wt="Hybrid"]{{background:#fef3c7;border-color:#fcd34d;color:#92400e}}
 .chip.active[data-wt="On-site"]{{background:#e0e7ff;border-color:#a5b4fc;color:#3730a3}}
+/* Location flag chip active */
+.chip.active[data-loc="Local"]{{background:#dcfce7;border-color:#86efac;color:#166534}}
+.chip.active[data-loc="Relocation"]{{background:#fef3c7;border-color:#fcd34d;color:#92400e}}
+.chip.active[data-loc="International"]{{background:#ede9fe;border-color:#c4b5fd;color:#5b21b6}}
 /* Status chip active */
 .chip.active[data-status="New"]{{background:var(--bg);border-color:var(--accent);color:var(--accent)}}
 .chip.active[data-status="Saved"]{{background:#eff6ff;border-color:var(--blue);color:var(--blue)}}
@@ -855,6 +988,9 @@ background:transparent;color:var(--red);transition:all .15s;margin-left:auto;whi
 .chip.active[data-wt="Remote"]{{background:#14532d;color:#86efac;border-color:#22c55e}}
 .chip.active[data-wt="Hybrid"]{{background:#78350f;color:#fcd34d;border-color:#f59e0b}}
 .chip.active[data-wt="On-site"]{{background:#312e81;color:#a5b4fc;border-color:#8b5cf6}}
+.chip.active[data-loc="Local"]{{background:#14532d;color:#86efac;border-color:#22c55e}}
+.chip.active[data-loc="Relocation"]{{background:#78350f;color:#fcd34d;border-color:#f59e0b}}
+.chip.active[data-loc="International"]{{background:#3b1f6e;color:#c4b5fd;border-color:#8b5cf6}}
 .chip.active[data-status="Saved"]{{background:#1e3a5f;color:#93c5fd;border-color:#3b82f6}}
 .chip.active[data-status="Applied"]{{background:#14532d;color:#86efac;border-color:#22c55e}}
 .chip.active[data-status="Interviewing"]{{background:#3b1f6e;color:#c4b5fd;border-color:#8b5cf6}}
@@ -903,6 +1039,11 @@ overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
 .wt-onsite{{background:#e0e7ff;color:#3730a3}}
 @media(prefers-color-scheme:dark){{.wt-remote{{background:#14532d;color:#86efac}}
 .wt-hybrid{{background:#78350f;color:#fcd34d}}.wt-onsite{{background:#312e81;color:#a5b4fc}}}}
+.loc-flag{{display:inline-block;font-size:10px;padding:1px 6px;border-radius:4px;font-weight:600;margin-left:4px}}
+.lf-relocation{{background:#fef3c7;color:#92400e;border:1px solid #fcd34d}}
+.lf-international{{background:#ede9fe;color:#5b21b6;border:1px solid #c4b5fd}}
+@media(prefers-color-scheme:dark){{.lf-relocation{{background:#78350f;color:#fcd34d;border-color:#f59e0b}}
+.lf-international{{background:#3b1f6e;color:#c4b5fd;border-color:#8b5cf6}}}}
 .score-bars{{display:flex;gap:12px;margin:8px 0}}
 .score-bar{{flex:1}}
 .score-label{{font-size:11px;color:var(--muted);margin-bottom:2px;display:flex;justify-content:space-between}}
@@ -1076,6 +1217,15 @@ font-weight:600;font-size:14px;cursor:pointer;text-decoration:none;text-align:ce
 </div>
 <div class="filter-sep"></div>
 <div class="filter-group">
+<span class="filter-label">Location</span>
+<div class="chip-group" id="locFlagChips">
+<button class="chip" data-loc="Local">Local <span class="chip-count" id="countLocal"></span></button>
+<button class="chip" data-loc="Relocation">Relocation <span class="chip-count" id="countRelocation"></span></button>
+<button class="chip" data-loc="International">Intl <span class="chip-count" id="countInternational"></span></button>
+</div>
+</div>
+<div class="filter-sep"></div>
+<div class="filter-group">
 <span class="filter-label">Status</span>
 <div class="chip-group" id="statusChips">
 <button class="chip" data-status="New">New <span class="chip-count" id="countNew"></span></button>
@@ -1160,6 +1310,7 @@ function getState(){{const s=loadState();s.statuses=s.statuses||{{}};s.notes=s.n
 let state=getState();
 let activeTier='all';
 let activeWorkTypes=new Set();
+let activeLocFlags=new Set();
 let activeStatuses=new Set();
 let currentModalId=null;
 
@@ -1181,7 +1332,7 @@ return `<div class="card" data-id="${{esc(j.id)}}" onclick="openModal('${{esc(j.
 ${{j.reposted?'<span class="repost-tag">REPOST</span>':''}}</div>
 <button class="card-dismiss" onclick="event.stopPropagation();dismissJob('${{esc(j.id)}}')" title="Hide">&times;</button>
 </div>
-<div class="card-meta"><span class="company">${{esc(j.company)}}</span> &middot; ${{esc(j.location||'Remote')}} <span class="work-tag wt-${{j.workType.toLowerCase().replace('-','')}}">${{j.workType}}</span></div>
+<div class="card-meta"><span class="company">${{esc(j.company)}}</span> &middot; ${{esc(j.location||'Remote')}} <span class="work-tag wt-${{j.workType.toLowerCase().replace('-','')}}">${{j.workType}}</span>${{j.locationFlag?'<span class="loc-flag lf-'+j.locationFlag.toLowerCase()+'">'+j.locationFlag+'</span>':''}}</div>
 ${{salaryHtml}}
 <div class="score-bars">
 <div class="score-bar"><div class="score-label"><span>Freshness</span><span>${{j.fresh}}</span></div>
@@ -1216,6 +1367,7 @@ if(state.hidden.includes(j.id))return false;
 if(activeTier!=='all'&&j.tier!==activeTier)return false;
 if(co&&j.companySlug!==co)return false;
 if(activeWorkTypes.size>0&&!activeWorkTypes.has(j.workType))return false;
+if(activeLocFlags.size>0){{var lf=j.locationFlag||'Local';if(!activeLocFlags.has(lf))return false}}
 if(sal){{if(sal==='has'){{if(!j.salary)return false}}else{{var minSal=parseInt(sal,10)*1000;if(parseSalaryNum(j.salary)<minSal)return false}}}}
 if(activeStatuses.size>0&&!activeStatuses.has('Hidden')){{var st=state.statuses[j.id]||'New';if(!activeStatuses.has(st))return false}}
 if(q){{const txt=(j.title+' '+j.company+' '+j.location).toLowerCase();if(!txt.includes(q))return false}}
@@ -1258,6 +1410,12 @@ visible.forEach(function(j){{wc[j.workType]=(wc[j.workType]||0)+1}});
 document.getElementById('countRemote').textContent=wc['Remote']||0;
 document.getElementById('countHybrid').textContent=wc['Hybrid']||0;
 document.getElementById('countOnsite').textContent=wc['On-site']||0;
+/* Location flag counts */
+var lc={{'Local':0,'Relocation':0,'International':0}};
+visible.forEach(function(j){{var lf=j.locationFlag||'Local';lc[lf]=(lc[lf]||0)+1}});
+document.getElementById('countLocal').textContent=lc['Local']||0;
+document.getElementById('countRelocation').textContent=lc['Relocation']||0;
+document.getElementById('countInternational').textContent=lc['International']||0;
 /* Status counts */
 var sc={{}};
 visible.forEach(function(j){{var s=state.statuses[j.id]||'New';sc[s]=(sc[s]||0)+1}});
@@ -1269,7 +1427,7 @@ var el=document.getElementById(id);if(el)el.textContent=sc[s]||0;
 }}
 
 function updateClearBtn(){{
-var hasFilters=activeTier!=='all'||activeWorkTypes.size>0||activeStatuses.size>0
+var hasFilters=activeTier!=='all'||activeWorkTypes.size>0||activeLocFlags.size>0||activeStatuses.size>0
 ||document.getElementById('companyFilter').value!==''
 ||document.getElementById('salaryFilter').value!==''
 ||document.getElementById('search').value!=='';
@@ -1283,10 +1441,12 @@ sal.classList.toggle('has-filter',sal.value!=='');
 function clearAllFilters(){{
 activeTier='all';
 activeWorkTypes.clear();
+activeLocFlags.clear();
 activeStatuses.clear();
 document.querySelectorAll('#tierChips .chip').forEach(function(c){{c.classList.remove('active')}});
 document.querySelector('#tierChips .chip[data-tier="all"]').classList.add('active');
 document.querySelectorAll('#workTypeChips .chip').forEach(function(c){{c.classList.remove('active')}});
+document.querySelectorAll('#locFlagChips .chip').forEach(function(c){{c.classList.remove('active')}});
 document.querySelectorAll('#statusChips .chip').forEach(function(c){{c.classList.remove('active')}});
 document.getElementById('companyFilter').value='';
 document.getElementById('salaryFilter').value='';
@@ -1309,8 +1469,9 @@ function openModal(id){{
 const j=JOBS.find(x=>x.id===id);if(!j)return;currentModalId=id;
 document.getElementById('mTitle').textContent=j.title;
 document.getElementById('mMeta').innerHTML=
-`<strong>${{esc(j.company)}}</strong> &middot; ${{esc(j.location||'Remote')}} &middot; `+
-`<span class="tier-tag ${{tierClass(j.tier)}}">${{j.tier}}</span>`+
+`<strong>${{esc(j.company)}}</strong> &middot; ${{esc(j.location||'Remote')}}`+
+(j.locationFlag?' <span class="loc-flag lf-'+j.locationFlag.toLowerCase()+'">'+j.locationFlag+'</span>':'')+
+` &middot; <span class="tier-tag ${{tierClass(j.tier)}}">${{j.tier}}</span>`+
 (j.reposted?' <span class="repost-tag">REPOST</span>':'')+
 ` &middot; First seen ${{j.firstSeen}}`;
 const salaryEl=document.getElementById('mSalary');
@@ -1584,9 +1745,9 @@ a.click();
 
 function exportCSV(){{
 const jobs=getFiltered();
-const hdr='Title,Company,Location,Work Type,Salary,Tier,Freshness,Fit,Combined,URL,Status,First Seen\\n';
+const hdr='Title,Company,Location,Work Type,Location Flag,Salary,Tier,Freshness,Fit,Combined,URL,Status,First Seen\\n';
 const rows=jobs.map(j=>{{const s=state.statuses[j.id]||'New';
-return [j.title,j.company,j.location,j.workType,j.salary||'',j.tier,j.fresh,j.fit,j.combined,j.url,s,j.firstSeen]
+return [j.title,j.company,j.location,j.workType,j.locationFlag||'Local',j.salary||'',j.tier,j.fresh,j.fit,j.combined,j.url,s,j.firstSeen]
 .map(v=>`"${{String(v).replace(/"/g,'""')}}"`)
 .join(',')}}).join('\\n');
 const blob=new Blob([hdr+rows],{{type:'text/csv'}});const a=document.createElement('a');
@@ -1649,6 +1810,14 @@ document.querySelectorAll('#workTypeChips .chip').forEach(function(c){{c.addEven
 var wt=this.dataset.wt;
 if(activeWorkTypes.has(wt)){{activeWorkTypes.delete(wt);this.classList.remove('active')}}
 else{{activeWorkTypes.add(wt);this.classList.add('active')}}
+render();
+}})}});
+
+/* Location flag chips: multi-select toggle */
+document.querySelectorAll('#locFlagChips .chip').forEach(function(c){{c.addEventListener('click',function(){{
+var lf=this.dataset.loc;
+if(activeLocFlags.has(lf)){{activeLocFlags.delete(lf);this.classList.remove('active')}}
+else{{activeLocFlags.add(lf);this.classList.add('active')}}
 render();
 }})}});
 

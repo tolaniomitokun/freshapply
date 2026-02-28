@@ -16,6 +16,8 @@ from freshapply import (
     _extract_salary,
     _sanitize_html,
     _strip_html,
+    _detect_countries,
+    _classify_location_flag,
     PM_RE,
     PM_EXCLUDE_RE,
 )
@@ -311,6 +313,86 @@ def eval_sanitization(conn):
     return len(issues)
 
 
+# ── Eval 5: Location Detection ──────────────────────────────────────────────
+
+def eval_location_detection(conn):
+    print("\nLOCATION DETECTION")
+    print("-" * 60)
+
+    # Curated test cases: (location_string, expected_countries)
+    test_cases = [
+        ("San Francisco, CA", {"US"}),
+        ("New York, NY", {"US"}),
+        ("Dallas, TX", {"US"}),
+        ("Remote - US", {"US"}),
+        ("Remote - UK", {"UK"}),
+        ("Remote - Canada", {"CA"}),
+        ("Remote", set()),
+        ("", set()),
+        ("London, UK", {"UK"}),
+        ("London, England, United Kingdom", {"UK"}),
+        ("Toronto, ON", {"CA"}),
+        ("Vancouver, British Columbia, Canada", {"CA"}),
+        ("Paris, France", {"FR"}),
+        ("Berlin, Germany", {"DE"}),
+        ("Amsterdam, Netherlands", {"NL"}),
+        ("Bangalore", {"IN"}),
+        ("Singapore", {"SG"}),
+        ("Tel Aviv", {"IL"}),
+        ("Zurich, Switzerland", {"CH"}),
+        ("Mountain View, California, US; New York City, NY", {"US"}),
+        ("Doha, Qatar ; Dubai, UAE", {"QA", "AE"}),
+    ]
+
+    pass_count = 0
+    fail_cases = []
+    for loc, expected in test_cases:
+        detected = _detect_countries(loc)
+        if detected == expected:
+            pass_count += 1
+        else:
+            fail_cases.append((loc, expected, detected))
+
+    print(f"  Country detection: {pass_count}/{len(test_cases)} correct")
+    if fail_cases:
+        for loc, expected, detected in fail_cases:
+            print(f"    \u274c \"{loc}\" — expected {expected}, got {detected}")
+
+    # Test flag classification (user = US, Dallas, TX)
+    flag_tests = [
+        ("Remote - US", "Remote", "US", "Dallas, TX", ""),
+        ("Remote", "Remote", "US", "Dallas, TX", ""),
+        ("Remote - UK", "Remote", "US", "Dallas, TX", "International"),
+        ("Dallas, TX", "On-site", "US", "Dallas, TX", ""),
+        ("San Francisco, CA", "On-site", "US", "Dallas, TX", "Relocation"),
+        ("New York, NY", "Hybrid", "US", "Dallas, TX", "Relocation"),
+        ("London, UK", "On-site", "US", "Dallas, TX", "International"),
+        ("", "Remote", "US", "Dallas, TX", ""),
+        ("Paris, France", "On-site", "US", "Dallas, TX", "International"),
+        ("San Francisco, CA", "On-site", "", "", ""),  # No config = no flag
+    ]
+
+    flag_pass = 0
+    flag_fail = []
+    for loc, wt, country, city, expected in flag_tests:
+        result = _classify_location_flag(loc, wt, country, city)
+        if result == expected:
+            flag_pass += 1
+        else:
+            flag_fail.append((loc, wt, expected, result))
+
+    print(f"  Flag classification: {flag_pass}/{len(flag_tests)} correct")
+    if flag_fail:
+        for loc, wt, expected, result in flag_fail:
+            exp_label = expected or "Local"
+            res_label = result or "Local"
+            print(f"    \u274c \"{loc}\" ({wt}) — expected {exp_label}, got {res_label}")
+    else:
+        print(f"  \u2705 All location test cases pass")
+
+    return len(fail_cases) + len(flag_fail)
+
+
 # ── Main ─────────────────────────────────────────────────────────────────────
 
 def main():
@@ -340,6 +422,9 @@ def main():
     f = eval_sanitization(conn)
     warnings += f
 
+    f = eval_location_detection(conn)
+    failures += f
+
     conn.close()
 
     print("\n" + "=" * 60)
@@ -348,7 +433,7 @@ def main():
         status = f"\u274c {failures} failure(s)"
     elif warnings:
         status = f"\u26a0\ufe0f  {warnings} warning(s), 0 failures"
-    print(f"  Summary: 4 evals — {status}")
+    print(f"  Summary: 5 evals — {status}")
     print("=" * 60)
 
     sys.exit(1 if failures > 0 else 0)

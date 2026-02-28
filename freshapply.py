@@ -299,9 +299,9 @@ FIT_KEYWORDS = {
         "base": 8, "max": 30,
         "patterns": [
             r"\bai\b", r"\bartificial\s+intelligence\b", r"\bmachine\s+learning\b",
-            r"\bml\b", r"\bllm\b", r"\blarge\s+language\s+model",
+            r"\bml\b", r"\bllms?\b", r"\blarge\s+language\s+model",
             r"\bgenerative\b", r"\bdeep\s+learning\b", r"\bnlp\b",
-            r"\bfoundation\s+model", r"\bgpt\b", r"\btransformer\b",
+            r"\bfoundation\s+models?\b", r"\bgpt\b", r"\btransformers?\b",
         ],
     },
     # Seniority (up to 25 pts: 10 per hit, max 25)
@@ -316,8 +316,8 @@ FIT_KEYWORDS = {
     "Domain Fit": {
         "base": 7, "max": 25,
         "patterns": [
-            r"\bplatform\b", r"\benterprise\b", r"\binfrastructure\b",
-            r"\bworkflow\b", r"\bautomation\b", r"\bagent\b", r"\bagentic\b",
+            r"\bplatforms?\b", r"\benterprise\b", r"\binfrastructure\b",
+            r"\bworkflows?\b", r"\bautomation\b", r"\bagents?\b", r"\bagentic\b",
         ],
     },
     # Industry verticals (up to 20 pts: 10 per hit, max 20)
@@ -366,6 +366,14 @@ def init_db(conn: sqlite3.Connection):
         conn.execute("ALTER TABLE jobs ADD COLUMN salary TEXT DEFAULT ''")
     except sqlite3.OperationalError:
         pass
+    try:
+        conn.execute("ALTER TABLE jobs ADD COLUMN published_at TEXT DEFAULT ''")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        conn.execute("ALTER TABLE jobs ADD COLUMN work_type TEXT DEFAULT ''")
+    except sqlite3.OperationalError:
+        pass
     conn.execute("""
         CREATE INDEX IF NOT EXISTS idx_jobs_company ON jobs(company)
     """)
@@ -401,12 +409,14 @@ def upsert_job(conn: sqlite3.Connection, job: dict, now: str):
         conn.execute(
             """INSERT INTO jobs (id, ats, company, title, url, location, description,
                                  description_html, salary, desc_hash,
-                                 first_seen_at, last_seen_at, reposted)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                                 first_seen_at, last_seen_at, reposted,
+                                 published_at, work_type)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (jid, job["ats"], job["company"], job["title"], job.get("url"),
              job.get("location"), job.get("description"),
              job.get("descriptionHtml", ""), job.get("salary", ""),
-             desc_hash, now, now, reposted),
+             desc_hash, now, now, reposted,
+             job.get("publishedAt", ""), job.get("workType", "")),
         )
         conn.execute(
             "INSERT INTO desc_hashes (hash, company, title, job_id, seen_at) VALUES (?, ?, ?, ?, ?)",
@@ -415,7 +425,16 @@ def upsert_job(conn: sqlite3.Connection, job: dict, now: str):
         conn.commit()
         return "reposted" if reposted else "new"
     else:
-        conn.execute("UPDATE jobs SET last_seen_at = ? WHERE id = ?", (now, jid))
+        # Update last_seen and backfill published_at/work_type if missing
+        pub = job.get("publishedAt", "")
+        wt = job.get("workType", "")
+        conn.execute(
+            """UPDATE jobs SET last_seen_at = ?,
+               published_at = CASE WHEN published_at = '' OR published_at IS NULL THEN ? ELSE published_at END,
+               work_type = CASE WHEN work_type = '' OR work_type IS NULL THEN ? ELSE work_type END
+               WHERE id = ?""",
+            (now, pub, wt, jid),
+        )
         conn.commit()
         return "updated"
 
@@ -528,6 +547,8 @@ def scrape_greenhouse(company: str) -> list[dict]:
         location = loc.get("name", "") if isinstance(loc, dict) else str(loc or "")
         raw_html = j.get("content", "")
         plain = _strip_html(raw_html)
+        # Greenhouse provides first_published and updated_at
+        published = j.get("first_published") or j.get("updated_at") or ""
         jobs.append({
             "id": f"gh:{company}:{j['id']}",
             "ats": "greenhouse",
@@ -538,6 +559,7 @@ def scrape_greenhouse(company: str) -> list[dict]:
             "description": plain,
             "descriptionHtml": _sanitize_html(raw_html),
             "salary": _extract_salary(plain),
+            "publishedAt": published,
         })
     return jobs
 
@@ -558,6 +580,18 @@ def scrape_lever(company: str) -> list[dict]:
             location = ", ".join(location)
         raw_html = j.get("description", "")
         plain = j.get("descriptionPlain", "") or _strip_html(raw_html)
+        # Lever provides createdAt (epoch ms), workplaceType, salaryRange
+        created_ms = j.get("createdAt")
+        published = ""
+        if created_ms and isinstance(created_ms, (int, float)):
+            from datetime import timezone as _tz
+            published = datetime.fromtimestamp(created_ms / 1000, tz=_tz.utc).isoformat()
+        lever_wt = (j.get("workplaceType") or "").lower()
+        wt_map = {"remote": "Remote", "hybrid": "Hybrid", "onsite": "On-site"}
+        lever_salary = ""
+        sr = j.get("salaryRange")
+        if sr and sr.get("min") and sr.get("max"):
+            lever_salary = f"${sr['min']:,} - ${sr['max']:,}"
         jobs.append({
             "id": f"lv:{company}:{j['id']}",
             "ats": "lever",
@@ -567,7 +601,9 @@ def scrape_lever(company: str) -> list[dict]:
             "location": location,
             "description": plain,
             "descriptionHtml": _sanitize_html(raw_html),
-            "salary": _extract_salary(plain),
+            "salary": lever_salary or _extract_salary(plain),
+            "publishedAt": published,
+            "workType": wt_map.get(lever_wt, ""),
         })
     return jobs
 
@@ -589,6 +625,14 @@ def scrape_ashby(company: str) -> list[dict]:
         job_url = j.get("jobUrl", "") or j.get("hostedUrl", "")
         raw_html = j.get("descriptionHtml", "") or j.get("description", "")
         plain = j.get("descriptionPlain", "") or _strip_html(raw_html)
+        # Ashby provides publishedAt, isRemote, workplaceType
+        ashby_wt = ""
+        wpt = (j.get("workplaceType") or "").lower()
+        if wpt:
+            wt_map = {"remote": "Remote", "hybrid": "Hybrid", "onsite": "On-site", "on-site": "On-site"}
+            ashby_wt = wt_map.get(wpt, "")
+        elif j.get("isRemote"):
+            ashby_wt = "Remote"
         jobs.append({
             "id": f"ab:{company}:{j['id']}",
             "ats": "ashby",
@@ -599,6 +643,8 @@ def scrape_ashby(company: str) -> list[dict]:
             "description": plain,
             "descriptionHtml": _sanitize_html(raw_html),
             "salary": _extract_salary(plain),
+            "publishedAt": j.get("publishedAt", ""),
+            "workType": ashby_wt,
         })
     return jobs
 
@@ -619,6 +665,8 @@ def scrape_workable(company: str) -> list[dict]:
         shortcode = j.get("shortcode", j.get("id", ""))
         job_url = j.get("url", f"https://apply.workable.com/{company}/j/{shortcode}/")
         plain = j.get("description", "")
+        # Workable provides published_on and telecommuting
+        wk_wt = "Remote" if j.get("telecommuting") else ""
         jobs.append({
             "id": f"wk:{company}:{shortcode}",
             "ats": "workable",
@@ -629,18 +677,26 @@ def scrape_workable(company: str) -> list[dict]:
             "description": plain,
             "descriptionHtml": "",
             "salary": _extract_salary(plain),
+            "publishedAt": j.get("published_on", ""),
+            "workType": wk_wt,
         })
     return jobs
 
 
 # ── Scoring ──────────────────────────────────────────────────────────────────
 
-def freshness_score(first_seen: str, last_seen: str, reposted: bool, now: datetime) -> int:
-    """0‑100. Higher = fresher. Reposts get a penalty."""
+def freshness_score(first_seen: str, last_seen: str, reposted: bool, now: datetime,
+                    published_at: str = "") -> int:
+    """0‑100. Higher = fresher. Uses published_at (actual post date) when available,
+    falls back to first_seen_at (when our scraper first saw it)."""
+    date_str = published_at or first_seen
     try:
-        first_dt = datetime.fromisoformat(first_seen)
+        first_dt = datetime.fromisoformat(date_str)
     except (ValueError, TypeError):
         return 0
+    # Ensure timezone-aware for subtraction (naive dates assumed UTC)
+    if first_dt.tzinfo is None:
+        first_dt = first_dt.replace(tzinfo=timezone.utc)
     age_hours = max(0, (now - first_dt).total_seconds() / 3600)
 
     if age_hours <= 6:
@@ -725,7 +781,9 @@ def generate_digest(conn: sqlite3.Connection):
     scored = []
     for row in rows:
         job = dict(zip(cols, row))
-        fresh = freshness_score(job["first_seen_at"], job["last_seen_at"], bool(job["reposted"]), now)
+        pub_at = job.get("published_at") or ""
+        fresh = freshness_score(job["first_seen_at"], job["last_seen_at"],
+                                bool(job["reposted"]), now, published_at=pub_at)
         fit = fit_score(job["title"], job["description"] or "")
         t = tier(fresh, fit, job["title"], job["description"] or "")
         combined = fresh * 0.4 + fit * 0.6
@@ -883,7 +941,9 @@ def generate_html_dashboard(conn: sqlite3.Connection):
         # Skip non-PM roles that slipped into the database
         if not PM_RE.search(title) or PM_EXCLUDE_RE.search(title):
             continue
-        fresh = freshness_score(job["first_seen_at"], job["last_seen_at"], bool(job["reposted"]), now)
+        pub_at = job.get("published_at") or ""
+        fresh = freshness_score(job["first_seen_at"], job["last_seen_at"],
+                                bool(job["reposted"]), now, published_at=pub_at)
         fit = fit_score(title, job["description"] or "")
         t = tier(fresh, fit, title, job["description"] or "")
         combined = round(fresh * 0.4 + fit * 0.6, 1)
@@ -891,19 +951,23 @@ def generate_html_dashboard(conn: sqlite3.Connection):
         display = DISPLAY_NAMES.get(job["company"], job["company"].replace("-", " ").title())
         suggestions = _build_resume_suggestions(breakdown, fit) if fit < 75 else []
         salary = job.get("salary", "") or _extract_salary(job["description"] or "")
-        # Classify work type from location + description
-        loc_lower = (job["location"] or "").lower()
-        desc_lower = (job["description"] or "").lower()
-        if "hybrid" in loc_lower or "hybrid" in desc_lower[:500]:
-            work_type = "Hybrid"
-        elif "remote" in loc_lower:
-            work_type = "Remote"
-        elif not job["location"] or not job["location"].strip():
-            work_type = "Remote"
-        elif _is_region_only(job["location"]):
-            work_type = "Remote"
+        # Use ATS-provided work type if available, otherwise classify from location
+        ats_wt = job.get("work_type") or ""
+        if ats_wt:
+            work_type = ats_wt
         else:
-            work_type = "On-site"
+            loc_lower = (job["location"] or "").lower()
+            desc_lower = (job["description"] or "").lower()
+            if "hybrid" in loc_lower or "hybrid" in desc_lower[:500]:
+                work_type = "Hybrid"
+            elif "remote" in loc_lower:
+                work_type = "Remote"
+            elif not job["location"] or not job["location"].strip():
+                work_type = "Remote"
+            elif _is_region_only(job["location"]):
+                work_type = "Remote"
+            else:
+                work_type = "On-site"
         location_flag = _classify_location_flag(
             job["location"] or "", work_type, user_country, user_city
         )
@@ -923,7 +987,7 @@ def generate_html_dashboard(conn: sqlite3.Connection):
             "tier": t,
             "combined": combined,
             "reposted": bool(job["reposted"]),
-            "firstSeen": job["first_seen_at"][:10],
+            "firstSeen": (pub_at or job["first_seen_at"])[:10],
             "lastSeen": job["last_seen_at"][:10],
             "breakdown": breakdown,
             "suggestions": suggestions,
@@ -935,6 +999,12 @@ def generate_html_dashboard(conn: sqlite3.Connection):
     # Escape </script> inside JSON to avoid breaking the HTML
     jobs_json = json.dumps(scored, ensure_ascii=False).replace("</", "<\\/")
     resume_json = json.dumps(RESUME_DATA, ensure_ascii=False).replace("</", "<\\/")
+    # Embed FIT_KEYWORDS for client-side re-scoring
+    fit_kw_js = json.dumps({
+        k: {"base": v["base"], "max": v["max"],
+            "patterns": [p for p in v["patterns"]]}
+        for k, v in FIT_KEYWORDS.items()
+    }, ensure_ascii=False).replace("</", "<\\/")
     gen_time = now.strftime("%Y-%m-%d %H:%M UTC")
 
     html = f"""<!DOCTYPE html>
@@ -1348,6 +1418,7 @@ Clear filters
 <script>
 const JOBS={jobs_json};
 const RESUME={resume_json};
+const FIT_KW={fit_kw_js};
 const LS_KEY='freshapply_state';
 
 function loadState(){{try{{return JSON.parse(localStorage.getItem(LS_KEY))||{{}}}}catch{{return{{}}}}}}
@@ -1388,7 +1459,7 @@ ${{salaryHtml}}
 <div class="bar-track"><div class="bar-fill ${{fitClass(j.fit)}}" style="width:${{j.fit}}%"></div></div></div>
 </div>
 <div class="card-foot">
-<span class="card-date">First seen ${{j.firstSeen}}${{hasNote}}</span>
+<span class="card-date">Posted ${{j.firstSeen}}${{hasNote}}</span>
 <div class="card-actions">
 <select class="status-select ${{statusClass(s)}}" onclick="event.stopPropagation()" onchange="setStatus('${{esc(j.id)}}',this.value,this)">
 ${{['New','Saved','Applied','Interviewing','Rejected'].map(function(o){{return '<option '+(o===s?'selected':'')+'>'+o+'</option>'}}).join('')}}
@@ -1520,7 +1591,7 @@ document.getElementById('mMeta').innerHTML=
 (j.locationFlag?' <span class="loc-flag lf-'+j.locationFlag.toLowerCase()+'">'+j.locationFlag+'</span>':'')+
 ` &middot; <span class="tier-tag ${{tierClass(j.tier)}}">${{j.tier}}</span>`+
 (j.reposted?' <span class="repost-tag">REPOST</span>':'')+
-` &middot; First seen ${{j.firstSeen}}`;
+` &middot; Posted ${{j.firstSeen}}`;
 const salaryEl=document.getElementById('mSalary');
 salaryEl.textContent=j.salary||'Salary not listed';
 salaryEl.style.color=j.salary?'var(--green)':'var(--muted)';
@@ -1823,17 +1894,95 @@ function saveResume(){{
 var txt=document.getElementById('resumeText').value.trim();
 if(!txt){{alert('Please paste or upload your resume text first.');return}}
 localStorage.setItem('freshapply_custom_resume',txt);
+rescoreWithResume(txt);
 var st=document.getElementById('resumeStatus');
-st.textContent='Resume saved successfully! Tailored resumes will now use your updated version.';
+st.textContent='Resume saved and scores updated! Fit scores now reflect your resume keywords.';
 st.style.color='var(--green)';st.style.display='block';
-setTimeout(function(){{st.style.display='none'}},4000);
+setTimeout(function(){{st.style.display='none'}},5000);
+}}
+
+function rescoreWithResume(resumeText){{
+/* Extract meaningful keywords from resume to boost matching */
+var rl=resumeText.toLowerCase();
+var words=rl.match(/\b[a-z]{{2,}}\b/g)||[];
+var bigrams=[];
+for(var i=0;i<words.length-1;i++)bigrams.push(words[i]+' '+words[i+1]);
+var resumeTokens=new Set(words.concat(bigrams));
+
+JOBS.forEach(function(j){{
+/* Re-compute fit score using FIT_KW patterns against job description */
+var text=(j.title+' '+(j.description||'')).toLowerCase();
+var total=0;
+var breakdown=[];
+var buckets=Object.keys(FIT_KW);
+for(var bi=0;bi<buckets.length;bi++){{
+var bname=buckets[bi];
+var cfg=FIT_KW[bname];
+var matched=[];
+for(var pi=0;pi<cfg.patterns.length;pi++){{
+try{{
+var rx=new RegExp(cfg.patterns[pi],'i');
+var m=rx.exec(text);
+if(m)matched.push(m[0]);
+}}catch(e){{}}
+}}
+/* Bonus: check if resume contains terms from this bucket that also appear in job */
+var resumeBonus=0;
+for(var pi=0;pi<cfg.patterns.length;pi++){{
+try{{
+var rx=new RegExp(cfg.patterns[pi],'i');
+var rm=rx.exec(rl);
+var jm=rx.exec(text);
+if(rm&&jm&&matched.indexOf(jm[0])===-1){{
+matched.push(jm[0]);
+resumeBonus++;
+}}
+}}catch(e){{}}
+}}
+var pts=Math.min(cfg.max,matched.length*cfg.base);
+total+=pts;
+breakdown.push({{bucket:bname,weight:pts,maxPts:cfg.max,
+matched:matched.length>0?matched.join(', '):null,hits:matched.length}});
+}}
+j.fit=Math.min(100,total);
+j.breakdown=breakdown;
+/* Re-compute tier */
+var hasAi=/\bai\b|\bartificial.intelligence|\bml\b|\bllms?\b|\bmachine.learn/.test(text);
+if(j.fresh>=70&&j.fit>=40&&hasAi)j.tier='Apply Today';
+else if(j.fresh>=50&&j.fit>=25)j.tier='Apply This Week';
+else j.tier='Watch List';
+j.combined=Math.round((j.fresh*0.4+j.fit*0.6)*10)/10;
+/* Re-compute suggestions */
+j.suggestions=[];
+if(j.fit<75){{
+var tipsMap={{
+'AI / ML':{{keywords:'AI, machine learning, ML, LLM, NLP, generative AI, deep learning, GPT, transformer models',bullets:['Led AI/ML product strategy for [product]','Defined and shipped LLM-powered features','Partnered with ML engineering to build generative AI capabilities']}},
+'Seniority':{{keywords:'senior, staff, principal, director, lead, head of, VP',bullets:['Led cross-functional team of [X] engineers','Directed product strategy for a [X]-person org','Mentored [X] PMs and established best practices']}},
+'Domain Fit':{{keywords:'platform, enterprise, infrastructure, workflow, automation, agent, agentic',bullets:['Built enterprise platform features serving [X]+ customers','Designed workflow automation tools','Owned infrastructure product roadmap']}},
+'Industry Verticals':{{keywords:'real estate, proptech, healthcare, health tech, clinical',bullets:['Launched [healthcare/real estate] product vertical','Built HIPAA-compliant / proptech solutions','Developed domain-specific features for [industry]']}}
+}};
+for(var si=0;si<breakdown.length;si++){{
+var b=breakdown[si];
+var tip=tipsMap[b.bucket];
+if(!tip)continue;
+if(b.matched===null){{
+j.suggestions.push({{bucket:b.bucket,weight:b.maxPts,status:'missing',keywords:tip.keywords,bullets:tip.bullets,learning:[]}});
+}}else if(b.weight<b.maxPts){{
+j.suggestions.push({{bucket:b.bucket,weight:b.maxPts-b.weight,status:'partial',keywords:tip.keywords,bullets:tip.bullets,learning:[]}});
+}}
+}}
+}}
+}});
+render();
 }}
 
 function clearResume(){{
 localStorage.removeItem('freshapply_custom_resume');
 document.getElementById('resumeText').value='';
+/* Reset to original scores by re-scoring with empty text */
+rescoreWithResume('');
 var st=document.getElementById('resumeStatus');
-st.textContent='Custom resume cleared. Default resume will be used for tailored downloads.';
+st.textContent='Custom resume cleared. Scores reset to default.';
 st.style.color='var(--amber)';st.style.display='block';
 setTimeout(function(){{st.style.display='none'}},4000);
 }}
@@ -1880,7 +2029,11 @@ document.getElementById('modalOverlay').addEventListener('click',function(e){{
 if(e.target===this)closeModal()}});
 document.addEventListener('keydown',function(e){{if(e.key==='Escape'){{closeModal();closeResumeModal()}}}});
 
-initCompanies();render();
+initCompanies();
+/* Auto-apply custom resume scoring on load */
+var savedResume=localStorage.getItem('freshapply_custom_resume');
+if(savedResume)rescoreWithResume(savedResume);
+else render();
 </script>
 </body>
 </html>"""

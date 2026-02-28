@@ -659,7 +659,7 @@ def eval_freshness_dates(conn):
     print("\n  Tier assignment consistency:")
     rows = conn.execute("SELECT id, title, description, published_at, first_seen_at, last_seen_at, reposted FROM jobs").fetchall()
     tier_issues = []
-    tier_counts = {"Apply Today": 0, "Apply This Week": 0, "Watch List": 0}
+    tier_counts = {"Today": 0, "This Week": 0, "1 Week+": 0}
 
     for jid, title, desc, pub, first_seen, last_seen, reposted in rows:
         pub_at = pub or ""
@@ -672,20 +672,20 @@ def eval_freshness_dates(conn):
         text = f"{title} {desc or ''}".lower()
         has_ai = bool(re.search(r"\bai\b|\bartificial.intelligence|\bml\b|\bllm\b|\bmachine.learn", text))
 
-        if t == "Apply Today":
-            if fresh < 70 or fit < 40 or not has_ai:
+        if t == "Today":
+            if fresh < 80 or fit < 40 or not has_ai:
                 tier_issues.append((jid, title, t, fresh, fit, has_ai,
-                    f"Apply Today requires fresh>=70,fit>=40,has_ai but got fresh={fresh},fit={fit},ai={has_ai}"))
-        elif t == "Apply This Week":
-            if fresh < 50 or fit < 25:
+                    f"Today requires fresh>=80,fit>=40,has_ai but got fresh={fresh},fit={fit},ai={has_ai}"))
+        elif t == "This Week":
+            if fresh < 55 or fit < 25:
                 tier_issues.append((jid, title, t, fresh, fit, has_ai,
-                    f"Apply This Week requires fresh>=50,fit>=25 but got fresh={fresh},fit={fit}"))
-            # Should not be Apply Today
-            if fresh >= 70 and fit >= 40 and has_ai:
+                    f"This Week requires fresh>=55,fit>=25 but got fresh={fresh},fit={fit}"))
+            # Should not be Today
+            if fresh >= 80 and fit >= 40 and has_ai:
                 tier_issues.append((jid, title, t, fresh, fit, has_ai,
-                    f"Should be Apply Today (fresh={fresh},fit={fit},ai=True) but is Apply This Week"))
+                    f"Should be Today (fresh={fresh},fit={fit},ai=True) but is This Week"))
 
-    for t_name in ["Apply Today", "Apply This Week", "Watch List"]:
+    for t_name in ["Today", "This Week", "1 Week+"]:
         print(f"    {t_name}: {tier_counts.get(t_name, 0)}")
 
     if tier_issues:

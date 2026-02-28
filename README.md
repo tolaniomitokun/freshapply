@@ -91,9 +91,9 @@ Reposts receive a -15 penalty.
 
 ### Tier Assignment
 
-- **Apply Today** — freshness >= 70, fit >= 30, and AI keywords present
-- **Apply This Week** — freshness >= 50, fit >= 20
-- **Watch List** — everything else
+- **Today** — freshness >= 80 (posted within 48 hours), fit >= 40, and AI keywords present
+- **This Week** — freshness >= 55 (posted within 7 days), fit >= 25
+- **1 Week+** — everything else
 
 ## Customization
 

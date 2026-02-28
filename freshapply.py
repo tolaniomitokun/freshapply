@@ -757,16 +757,16 @@ def tier(fresh: int, fit: int, title: str, description: str) -> str:
     text = f"{title} {description}".lower()
     has_ai = bool(re.search(r"\bai\b|\bartificial.intelligence|\bml\b|\bllm\b|\bmachine.learn", text))
 
-    if fresh >= 70 and fit >= 40 and has_ai:
-        return "Apply Today"
-    if fresh >= 50 and fit >= 25:
-        return "Apply This Week"
-    return "Watch List"
+    if fresh >= 80 and fit >= 40 and has_ai:
+        return "Today"
+    if fresh >= 55 and fit >= 25:
+        return "This Week"
+    return "1 Week+"
 
 
 # ── Digest ───────────────────────────────────────────────────────────────────
 
-TIER_ORDER = {"Apply Today": 0, "Apply This Week": 1, "Watch List": 2}
+TIER_ORDER = {"Today": 0, "This Week": 1, "1 Week+": 2}
 
 
 def generate_digest(conn: sqlite3.Connection):
@@ -802,7 +802,7 @@ def generate_digest(conn: sqlite3.Connection):
     tier_counts = {}
     for s in scored:
         tier_counts[s["tier"]] = tier_counts.get(s["tier"], 0) + 1
-    for t in ["Apply Today", "Apply This Week", "Watch List"]:
+    for t in ["Today", "This Week", "1 Week+"]:
         if t in tier_counts:
             lines.append(f"- **{t}**: {tier_counts[t]} roles")
     lines.append("")
@@ -811,7 +811,7 @@ def generate_digest(conn: sqlite3.Connection):
     for s in scored:
         if s["tier"] != current_tier:
             current_tier = s["tier"]
-            emoji = {"Apply Today": "🔴", "Apply This Week": "🟡", "Watch List": "⚪"}.get(current_tier, "")
+            emoji = {"Today": "🟢", "This Week": "🟡", "1 Week+": "⚪"}.get(current_tier, "")
             lines.append(f"---\n\n## {emoji} {current_tier}\n")
 
         display = DISPLAY_NAMES.get(s["company"], s["company"].replace("-", " ").title())
@@ -1034,6 +1034,7 @@ position:sticky;top:0;z-index:100;box-shadow:var(--shadow)}}
 .logo span{{color:var(--accent)}}
 .header-stats{{display:flex;gap:10px;margin-left:auto;align-items:center;flex-wrap:wrap}}
 .stat-badge{{padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600}}
+.stat-green{{background:#dcfce7;color:#166534}}
 .stat-red{{background:var(--red-bg);color:var(--red)}}
 .stat-amber{{background:var(--amber-bg);color:var(--amber)}}
 .stat-gray{{background:var(--gray-bg);color:var(--muted)}}
@@ -1074,12 +1075,12 @@ background:var(--bg);color:var(--muted);min-width:16px;text-align:center;line-he
 /* Tier chip active */
 .chip.active[data-tier="all"]{{background:var(--accent);border-color:var(--accent);color:#fff}}
 .chip.active[data-tier="all"] .chip-count{{background:rgba(255,255,255,.2);color:#fff}}
-.chip.active[data-tier="Apply Today"]{{background:var(--red);border-color:var(--red);color:#fff}}
-.chip.active[data-tier="Apply Today"] .chip-count{{background:rgba(255,255,255,.2);color:#fff}}
-.chip.active[data-tier="Apply This Week"]{{background:var(--amber);border-color:var(--amber);color:#fff}}
-.chip.active[data-tier="Apply This Week"] .chip-count{{background:rgba(255,255,255,.2);color:#fff}}
-.chip.active[data-tier="Watch List"]{{background:#6b7280;border-color:#6b7280;color:#fff}}
-.chip.active[data-tier="Watch List"] .chip-count{{background:rgba(255,255,255,.2);color:#fff}}
+.chip.active[data-tier="Today"]{{background:var(--green);border-color:var(--green);color:#fff}}
+.chip.active[data-tier="Today"] .chip-count{{background:rgba(255,255,255,.2);color:#fff}}
+.chip.active[data-tier="This Week"]{{background:var(--amber);border-color:var(--amber);color:#fff}}
+.chip.active[data-tier="This Week"] .chip-count{{background:rgba(255,255,255,.2);color:#fff}}
+.chip.active[data-tier="1 Week+"]{{background:#6b7280;border-color:#6b7280;color:#fff}}
+.chip.active[data-tier="1 Week+"] .chip-count{{background:rgba(255,255,255,.2);color:#fff}}
 /* Work type chip active */
 .chip.active[data-wt="Remote"]{{background:#dcfce7;border-color:#86efac;color:#166534}}
 .chip.active[data-wt="Hybrid"]{{background:#fef3c7;border-color:#fcd34d;color:#92400e}}
@@ -1137,6 +1138,7 @@ display:flex;flex-direction:column}}
 display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}}
 .card-title a{{color:var(--text)}}
 .card-title a:hover{{color:var(--accent)}}
+.card-tags{{display:flex;align-items:center;gap:4px;flex-shrink:0}}
 .card-dismiss{{background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;
 padding:2px 6px;border-radius:4px;line-height:1;flex-shrink:0}}
 .card-dismiss:hover{{background:var(--border);color:var(--text)}}
@@ -1145,8 +1147,8 @@ overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
 .card-meta .company{{font-weight:600;color:var(--text)}}
 .card-salary{{font-size:12px;font-weight:600;color:var(--green);margin-bottom:8px;min-height:18px}}
 .no-salary{{color:var(--muted);font-weight:400;font-size:11px}}
-.tier-tag{{display:inline-block;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600;margin-left:6px}}
-.tier-tag.t-today{{background:var(--red-bg);color:var(--red)}}
+.tier-tag{{display:inline-block;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600;white-space:nowrap}}
+.tier-tag.t-today{{background:#dcfce7;color:#166534}}
 .tier-tag.t-week{{background:var(--amber-bg);color:var(--amber)}}
 .tier-tag.t-watch{{background:var(--gray-bg);color:var(--muted)}}
 .repost-tag{{font-size:11px;color:var(--amber);font-weight:600;margin-left:4px}}
@@ -1155,7 +1157,8 @@ overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
 .wt-hybrid{{background:#fef3c7;color:#92400e}}
 .wt-onsite{{background:#e0e7ff;color:#3730a3}}
 @media(prefers-color-scheme:dark){{.wt-remote{{background:#14532d;color:#86efac}}
-.wt-hybrid{{background:#78350f;color:#fcd34d}}.wt-onsite{{background:#312e81;color:#a5b4fc}}}}
+.wt-hybrid{{background:#78350f;color:#fcd34d}}.wt-onsite{{background:#312e81;color:#a5b4fc}}
+.tier-tag.t-today{{background:#14532d;color:#86efac}}}}
 .loc-flag{{display:inline-block;font-size:10px;padding:1px 6px;border-radius:4px;font-weight:600;margin-left:4px}}
 .lf-relocation{{background:#fef3c7;color:#92400e;border:1px solid #fcd34d}}
 .lf-international{{background:#ede9fe;color:#5b21b6;border:1px solid #c4b5fd}}
@@ -1318,9 +1321,9 @@ font-weight:600;font-size:14px;cursor:pointer;text-decoration:none;text-align:ce
 <span class="filter-label">Priority</span>
 <div class="chip-group" id="tierChips">
 <button class="chip active" data-tier="all">All <span class="chip-count" id="countAll"></span></button>
-<button class="chip" data-tier="Apply Today">Today <span class="chip-count" id="countToday"></span></button>
-<button class="chip" data-tier="Apply This Week">This Week <span class="chip-count" id="countWeek"></span></button>
-<button class="chip" data-tier="Watch List">Watch <span class="chip-count" id="countWatch"></span></button>
+<button class="chip" data-tier="Today">Today <span class="chip-count" id="countToday"></span></button>
+<button class="chip" data-tier="This Week">This Week <span class="chip-count" id="countWeek"></span></button>
+<button class="chip" data-tier="1 Week+">1 Week+ <span class="chip-count" id="countWatch"></span></button>
 </div>
 </div>
 <div class="filter-sep"></div>
@@ -1434,7 +1437,7 @@ let currentModalId=null;
 
 function esc(s){{const d=document.createElement('div');d.textContent=s;return d.innerHTML}}
 
-function tierClass(t){{if(t==='Apply Today')return 't-today';if(t==='Apply This Week')return 't-week';return 't-watch'}}
+function tierClass(t){{if(t==='Today')return 't-today';if(t==='This Week')return 't-week';return 't-watch'}}
 function fitClass(score){{if(score>=75)return 'fit-high';if(score>=50)return 'fit-mid';if(score>=25)return 'fit-low';return 'fit-vlow'}}
 function fitColor(score){{if(score>=75)return 'var(--green)';if(score>=50)return 'var(--blue)';if(score>=25)return 'var(--amber)';return 'var(--red)'}}
 function statusClass(st){{return st?'s-'+st.toLowerCase():''}}
@@ -1445,10 +1448,8 @@ const hasNote=state.notes[j.id]?'<span class="has-note"></span>':'';
 const salaryHtml='<div class="card-salary">'+(j.salary?esc(j.salary):'<span class="no-salary">Salary not listed</span>')+'</div>';
 return `<div class="card" data-id="${{esc(j.id)}}" onclick="openModal('${{esc(j.id)}}')">
 <div class="card-header">
-<div class="card-title"><a href="${{esc(j.url)}}" target="_blank" onclick="event.stopPropagation()">${{esc(j.title)}}</a>
-<span class="tier-tag ${{tierClass(j.tier)}}">${{esc(j.tier)}}</span>
-${{j.reposted?'<span class="repost-tag">REPOST</span>':''}}</div>
-<button class="card-dismiss" onclick="event.stopPropagation();dismissJob('${{esc(j.id)}}')" title="Hide">&times;</button>
+<div class="card-title"><a href="${{esc(j.url)}}" target="_blank" onclick="event.stopPropagation()">${{esc(j.title)}}</a></div>
+<div class="card-tags"><span class="tier-tag ${{tierClass(j.tier)}}">${{esc(j.tier)}}</span>${{j.reposted?'<span class="repost-tag">REPOST</span>':''}}<button class="card-dismiss" onclick="event.stopPropagation();dismissJob('${{esc(j.id)}}')" title="Hide">&times;</button></div>
 </div>
 <div class="card-meta"><span class="company">${{esc(j.company)}}</span> &middot; ${{esc(j.location||'Remote')}} <span class="work-tag wt-${{j.workType.toLowerCase().replace('-','')}}">${{j.workType}}</span>${{j.locationFlag?'<span class="loc-flag lf-'+j.locationFlag.toLowerCase()+'">'+j.locationFlag+'</span>':''}}</div>
 ${{salaryHtml}}
@@ -1495,7 +1496,7 @@ if(sort==='fresh')jobs.sort((a,b)=>b.fresh-a.fresh);
 else if(sort==='fit')jobs.sort((a,b)=>b.fit-a.fit);
 else if(sort==='company')jobs.sort((a,b)=>a.company.localeCompare(b.company));
 else if(sort==='newest')jobs.sort((a,b)=>b.firstSeen.localeCompare(a.firstSeen));
-else jobs.sort((a,b)=>{{const to={{'Apply Today':0,'Apply This Week':1,'Watch List':2}};
+else jobs.sort((a,b)=>{{const to={{'Today':0,'This Week':1,'1 Week+':2}};
 const td=to[a.tier]-to[b.tier];return td!==0?td:b.combined-a.combined}});
 return jobs}}
 
@@ -1505,9 +1506,9 @@ document.getElementById('grid').innerHTML=jobs.map(renderCard).join('');
 document.getElementById('counterBar').textContent='Showing '+jobs.length+' of '+JOBS.length+' roles';
 var counts={{}};JOBS.forEach(function(j){{counts[j.tier]=(counts[j.tier]||0)+1}});
 document.getElementById('tierBadges').innerHTML=
-'<span class="stat-badge stat-red">'+(counts['Apply Today']||0)+' today</span>'+
-'<span class="stat-badge stat-amber">'+(counts['Apply This Week']||0)+' this week</span>'+
-'<span class="stat-badge stat-gray">'+(counts['Watch List']||0)+' watch</span>';
+'<span class="stat-badge stat-green">'+(counts['Today']||0)+' today</span>'+
+'<span class="stat-badge stat-amber">'+(counts['This Week']||0)+' this week</span>'+
+'<span class="stat-badge stat-gray">'+(counts['1 Week+']||0)+' 1 week+</span>';
 document.getElementById('totalCount').textContent=JOBS.length;
 updateCounts();
 updateClearBtn();
@@ -1516,12 +1517,12 @@ updateClearBtn();
 function updateCounts(){{
 var visible=JOBS.filter(function(j){{return !state.hidden.includes(j.id)}});
 /* Tier counts (full set) */
-var tc={{'Apply Today':0,'Apply This Week':0,'Watch List':0}};
+var tc={{'Today':0,'This Week':0,'1 Week+':0}};
 visible.forEach(function(j){{tc[j.tier]=(tc[j.tier]||0)+1}});
 document.getElementById('countAll').textContent=visible.length;
-document.getElementById('countToday').textContent=tc['Apply Today']||0;
-document.getElementById('countWeek').textContent=tc['Apply This Week']||0;
-document.getElementById('countWatch').textContent=tc['Watch List']||0;
+document.getElementById('countToday').textContent=tc['Today']||0;
+document.getElementById('countWeek').textContent=tc['This Week']||0;
+document.getElementById('countWatch').textContent=tc['1 Week+']||0;
 /* Work type counts */
 var wc={{'Remote':0,'Hybrid':0,'On-site':0}};
 visible.forEach(function(j){{wc[j.workType]=(wc[j.workType]||0)+1}});
@@ -1948,9 +1949,9 @@ j.fit=Math.min(100,total);
 j.breakdown=breakdown;
 /* Re-compute tier */
 var hasAi=/\bai\b|\bartificial.intelligence|\bml\b|\bllms?\b|\bmachine.learn/.test(text);
-if(j.fresh>=70&&j.fit>=40&&hasAi)j.tier='Apply Today';
-else if(j.fresh>=50&&j.fit>=25)j.tier='Apply This Week';
-else j.tier='Watch List';
+if(j.fresh>=80&&j.fit>=40&&hasAi)j.tier='Today';
+else if(j.fresh>=55&&j.fit>=25)j.tier='This Week';
+else j.tier='1 Week+';
 j.combined=Math.round((j.fresh*0.4+j.fit*0.6)*10)/10;
 /* Re-compute suggestions */
 j.suggestions=[];

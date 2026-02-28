@@ -2,3 +2,5 @@ freshapply.db
 digests/
 __pycache__/
 *.pyc
+resume.json
+SUMMARY.md

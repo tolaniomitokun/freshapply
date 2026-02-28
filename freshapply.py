@@ -26,118 +26,22 @@ from datetime import datetime, timezone
 
 RESUME_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "resume.json")
 
-RESUME_DATA = {
-    "name": "TOLANI OMITOKUN",
-    "contact": "Dallas, TX  |  tolaniomitokun@gmail.com  |  301-860-2361  |  LinkedIn | tolaniomitokun.com",
-    "headline": "SENIOR AI PRODUCT MANAGER",
-    "tagline": "Multi-Agent Systems  |  Generative AI  |  0-1 AI Product Strategy  |  Data & AI  |  RAG + Evals",
-    "summary": "Senior AI product manager with 8+ years driving product strategy, prioritization, and execution across enterprise SaaS, CRM, and AI platforms. Shipped an AI copilot serving 300,000+ users with 47% monthly active usage and 1.5x AI assisted task completion. Designed multi-agent orchestration systems, and built AI evaluation frameworks cutting hallucinations by 30% under strict enterprise security and compliance. I prototype with LLMs, design agentic workflows, and connect AI/ML capabilities to measurable business outcomes. I also build AI agents for my own PM workflows (user research, competitive analysis, PRD drafting, stakeholder prep), which shapes how I design AI products for others.",
-    "competencies": [
-        "Multi-Agent Orchestration", "Agentic AI & Autonomous Workflows",
-        "Conversational AI / LLMs", "RAG Systems", "AI Evals",
-        "AI/ML Personalization", "Vibe Coding", "Prompt Engineering",
-        "Voice AI", "Enterprise Security, PII & Responsible AI",
-        "Product Strategy & Road mapping", "User Research & Discovery",
-        "A/B Testing & Experimentation", "OKRs / KPIs / Product Analytics",
-        "GTM Strategy", "Cross-Functional & Stakeholder Leadership",
-        "Design Thinking / Lean Startup / Agile / SAFe",
-    ],
-    "experience": [
-        {
-            "section": "PROFESSIONAL EXPERIENCE",
-            "company": "ANYWHERE REAL ESTATE (Coldwell Banker, Century 21, Sotheby's Intl Realty, ERA, Better Homes & Gardens, Corcoran)",
-            "title": "Senior AI Product Manager",
-            "location": "US Remote",
-            "dates": "April 2024 - Present",
-            "overview": "Lead AI product strategy, vision, and roadmap for enterprise agent productivity platform serving 300,000+ real estate agents across six national brands. Own cross-functional delivery for AI-powered features recognized as flagship products across the enterprise.",
-            "bullets": [
-                "Launched an AI Assistant for 300+ Agents powering automated marketing campaign workflows (emails, socials and web activity) and evolved it into a workflow-embedded copilot with multimodal input (text, voice, file/image upload), persistent memory, and contextual guidance across, mobile and desktop applications. Drove product vision and roadmap from discovery through launch, reaching 47% monthly active usage among the agent base within 12 months.",
-                "Designed an AI evaluation (evals) framework using LLM-as-judge methodology, golden test sets, and human feedback loops. Cut hallucination rates by over 30% and integrated evals into our CI/CD pipeline as a quality gate before shipping.",
-                "Led the implementation of a RAG-powered knowledge system grounded in 5,000+ proprietary real estate documents. Defined end-to-end data flows across sources, transformations, and dependencies. Utilized Model Context Protocol (MCP) and context streaming to integrate real-time data from listings, transactions, and website activities, achieving 85% first-response accuracy and reducing support ticket volume by 30%.",
-                "Shipped all AI features under strict enterprise security, PII protection, and InfoSec compliance across a multi-brand platform. Designed data handling protocols and responsible AI guardrails covering 300K+ monthly user interactions.",
-                "Led global cross-functional collaboration with Engineering, Data Science, Design, and PMM to run A/B experiments and prioritize features. Set OKRs and KPIs that drove a 1.5x increase in AI-assisted task completions quarter-over-quarter.",
-                "Developed a stage-aware AI copilot for buyer/seller workflows informed by user journey mapping and agent interviews. Contextual guidance and smart follow-ups increased agent deal velocity by 15%.",
-                "Created an intent-based routing and AI personalization engine that customizes behavior by agent segment and experience level. Defined segmentation through data analysis and stakeholder insights. Improved engagement retention by 40% among top-producing agents.",
-                "Designed AI-powered Contact Activity Log with predictive opportunity scoring (Likely to Transact Model) to help agents prioritize leads. Contributed to a 10% improvement in lead conversion rates.",
-                "Contributed to HousingWire Tech100 (2026) recognition for the Anywhere Intelligence Platform through delivery and executive positioning of the AI Assistant as a flagship enterprise product.",
-                "Co-led and executed go-to-market strategy for AI features with Marketing and brand leaders. Built enablement materials and training programs that accelerated rollout.",
-            ],
-        },
-        {
-            "section": "PERSONAL AI PRODUCT BUILDS",
-            "company": "THE EMERGENT DIAGNOSTIC INSTITUTION",
-            "title": "Solo Builder",
-            "location": "",
-            "dates": "February 2026",
-            "overview": "Selected from 13,000 applicants for Anthropic's 'Built with Opus 4.6' Claude Code Hackathon. Built and deployed in 3 days.",
-            "bullets": [
-                "Architected a six-agent multi-agent diagnostic system with structured multi-round debate, a Metacognitive Observer using extended thinking (32K tokens) for real-time cognitive bias detection, and self-evolving constitutional governance. Achieved 100% diagnostic accuracy across 6 medical domains. Detected 24 biases and generated 43 constitutional amendments.",
-                "Leveraged Opus 4.6's 1 million-token context window to process 77,000+ words of longitudinal healthcare records in a single pass, increasing diagnostic confidence from 55% to 91%. Built AI evaluation framework validating performance across 6 domains.",
-                "Deployed full-stack application (Python orchestrator, React/Tailwind visualization, Express server) to production via Railway with live interactive demo.",
-            ],
-        },
-        {
-            "section": "",
-            "company": "MULTI-AGENT AI HEALTHCARE SYSTEM NEXUS AI",
-            "title": "Founder & Builder",
-            "location": "",
-            "dates": "2025 - Present",
-            "overview": "",
-            "bullets": [
-                "Built a 6-agent multi-agent orchestration system with parallel sub-agents for voice scheduling, clinical intelligence (Symptom Analysis + Pattern Detection), SOAP note generation, and automated ICD-10/CPT billing. Reduces clinician documentation time by an estimated 85%.",
-                "Implemented real-time voice AI with 320ms latency using GPT-4o Realtime API, Vapi, and ElevenLabs. Designed conversation flows, guardrails, and fallback logic for HIPAA-compliant healthcare interactions.",
-                "Built comprehensive AI evals framework with LLM-as-judge evaluation, golden test sets, edge case testing, and automated quality metrics. Achieved 94% accuracy on internal clinical eval rubric across 10+ test cases.",
-                "Built two-step transcription pipeline (Whisper API to GPT-4 speaker labeling) for medical-grade documentation. Deployed with CI/CD via Railway and GitHub Actions; full-stack React/Tailwind interface with role-based access.",
-                "Placed 2nd at Product Faculty's AI PM Demo Day out of hundreds of submissions. Judged by Joff Redfern (CPO, Atlassian), Miqdad Jaffer (Product Lead, OpenAI), and Rohan Varma (Product Leader, Cursor).",
-            ],
-        },
-        {
-            "section": "PRIOR EXPERIENCE",
-            "company": "COSTAR GROUP (CoStar, Apartments.com, Homes.com, LoopNet, STR & TenX)",
-            "title": "Senior Product Manager",
-            "location": "Washington, DC",
-            "dates": "May 2019 - April 2024",
-            "overview": "Led product strategy and roadmap for CRM, SaaS B2B/B2C, and Cloud API products across a portfolio supporting $2.4B+ in annual revenue. Managed full lifecycles from discovery through scale across domestic and international markets.",
-            "bullets": [
-                "Led product planning and strategic launches across CRM and SaaS portfolio that contributed to company revenue growth from $1.4B to $2.4B over 4 years. Partnered with Engineering, Marketing, Sales, and Finance to expand into new industries and regions. While partnering with distributed teams across Asia, EMEA, and South America.",
-                "Implemented E-commerce solution with Stripe integration, optimizing transaction efficiency by 20% and generating $650K+ monthly revenue across US, UK, Europe, and Canada.",
-                "Launched customer account management platform with auto-payment, resulting in 35% more on-time payments and 19% less bad debt.",
-                "Owned CRM and Cloud API product lifecycle, shipping 10+ features that boosted sales pipeline by 15% and lifted user satisfaction scores.",
-                "Directed user research and feature prioritization aligned with value streams, improving task completion rates by 40% and driving measurable gains in engagement.",
-            ],
-        },
-        {
-            "section": "",
-            "company": "LIBRARY OF CONGRESS (Contract)",
-            "title": "Senior Business Analyst / Product Owner",
-            "location": "",
-            "dates": "June 2017 - May 2019",
-            "overview": "",
-            "bullets": [
-                "Led ITSM migration to ServiceNow Cloud, cutting IT maintenance costs by 75% and improving system performance by 90%.",
-            ],
-        },
-        {
-            "section": "",
-            "company": "FEDERAL MINISTRY OF HEALTH, Nigeria",
-            "title": "Business Analyst",
-            "location": "",
-            "dates": "April 2014 - February 2017",
-            "overview": "",
-            "bullets": [
-                "Spearheaded eHealth implementation across 36 states, improving healthcare delivery and patient care quality by 70%.",
-            ],
-        },
-    ],
-    "tools": {
-        "LLMs & AI": "Claude, ChatGPT, Gemini, Perplexity Pro, Google AI Studio, Hugging Face, NotebookLM",
-        "Building": "Lovable, Claude Code, OpenAI Cursor, Microsoft Copilot Studio, Replit, V0, n8n, Vapi, ElevenLabs, LangChain, Railway, GitHub",
-        "Product": "Jira (+ Rovo AI), Confluence, Notion AI, Asana, Figma, Miro, FigJam, Lucidchart, Amplitude, Pendo, Airtable",
-        "Data": "SQL, Python (basic), Databricks, Google Analytics, Snowflake, Elastic search, LangSmith, Power BI, Tableau, Looker, A/B Testing",
-        "Comms": "Gamma, Otter.ai, Descript, Loom, Slack, Google Workspace",
-    },
-    "education": "BS in Sociology, University of Lagos, 2014  |  Product Faculty AI PM Certification  |  Certified SAFe 6 PO/PM  |  Pragmatic PMC III  |  General Assembly UX Design  |  Professional Scrum Master (PSM)",
-}
+# Load resume from local file (gitignored — keeps personal data out of the repo)
+if os.path.exists(RESUME_PATH):
+    with open(RESUME_PATH, "r") as _f:
+        RESUME_DATA = json.load(_f)
+else:
+    RESUME_DATA = {
+        "name": "YOUR NAME",
+        "contact": "City, ST  |  email@example.com",
+        "headline": "YOUR TITLE",
+        "tagline": "",
+        "summary": "",
+        "competencies": [],
+        "experience": [],
+        "tools": {},
+        "education": "",
+    }
 
 # ── ATS company rosters ─────────────────────────────────────────────────────
 
@@ -1599,7 +1503,7 @@ h+='</body></html>';
 var blob=new Blob([h],{{type:'application/msword'}});
 var a=document.createElement('a');a.href=URL.createObjectURL(blob);
 var slug=j.company.toLowerCase().replace(/\\s+/g,'-')+'-'+j.title.toLowerCase().replace(/[^a-z0-9]+/g,'-').substring(0,40);
-a.download='Tolani_Omitokun_Resume_'+slug+'.doc';a.click();return;
+a.download=RESUME.name.replace(/\\s+/g,'_')+'_Resume_'+slug+'.doc';a.click();return;
 }}
 
 /* Build Word-compatible HTML resume — tight layout matching original .docx */
@@ -1664,7 +1568,7 @@ var blob=new Blob([h],{{type:'application/msword'}});
 var a=document.createElement('a');
 a.href=URL.createObjectURL(blob);
 var slug=j.company.toLowerCase().replace(/\\s+/g,'-')+'-'+j.title.toLowerCase().replace(/[^a-z0-9]+/g,'-').substring(0,40);
-a.download='Tolani_Omitokun_Resume_'+slug+'.doc';
+a.download=RESUME.name.replace(/\\s+/g,'_')+'_Resume_'+slug+'.doc';
 a.click();
 }}
 

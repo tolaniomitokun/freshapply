@@ -966,13 +966,15 @@ padding:16px;box-shadow:var(--shadow);transition:.15s;position:relative;cursor:p
 display:flex;flex-direction:column}}
 .card:hover{{box-shadow:0 4px 12px rgba(0,0,0,.1);transform:translateY(-1px)}}
 .card-header{{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}}
-.card-title{{font-size:15px;font-weight:600;flex:1}}
+.card-title{{font-size:15px;font-weight:600;flex:1;min-width:0;
+display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}}
 .card-title a{{color:var(--text)}}
 .card-title a:hover{{color:var(--accent)}}
 .card-dismiss{{background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;
-padding:2px 6px;border-radius:4px;line-height:1}}
+padding:2px 6px;border-radius:4px;line-height:1;flex-shrink:0}}
 .card-dismiss:hover{{background:var(--border);color:var(--text)}}
-.card-meta{{font-size:13px;color:var(--muted);margin:4px 0 6px}}
+.card-meta{{font-size:13px;color:var(--muted);margin:4px 0 6px;
+overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
 .card-meta .company{{font-weight:600;color:var(--text)}}
 .card-salary{{font-size:12px;font-weight:600;color:var(--green);margin-bottom:8px;min-height:18px}}
 .no-salary{{color:var(--muted);font-weight:400;font-size:11px}}

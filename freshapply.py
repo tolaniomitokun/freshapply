@@ -807,25 +807,82 @@ position:sticky;top:0;z-index:100;box-shadow:var(--shadow)}}
 .stat-gray{{background:var(--gray-bg);color:var(--muted)}}
 .gen-time{{font-size:12px;color:var(--muted)}}
 
-.toolbar{{background:var(--card);border-bottom:1px solid var(--border);padding:12px 24px}}
-.toolbar-inner{{display:flex;gap:10px;flex-wrap:wrap;align-items:center;max-width:1400px;margin:0 auto}}
-.search-box{{flex:1;min-width:200px;padding:8px 12px;border:1px solid var(--border);
+/* Toolbar layout */
+.toolbar{{background:var(--card);border-bottom:1px solid var(--border);padding:0}}
+.toolbar-inner{{max-width:1400px;margin:0 auto}}
+.toolbar-row{{display:flex;align-items:center;gap:10px;padding:10px 24px}}
+.toolbar-row--primary{{border-bottom:1px solid var(--border);gap:12px}}
+.toolbar-row--filters{{gap:6px;flex-wrap:wrap;padding:8px 24px}}
+.search-wrap{{flex:1;min-width:200px;position:relative}}
+.search-icon{{position:absolute;left:10px;top:50%;transform:translateY(-50%);width:16px;height:16px;color:var(--muted);pointer-events:none}}
+.search-box{{width:100%;padding:8px 12px 8px 34px;border:1px solid var(--border);
 border-radius:var(--radius);font-size:14px;background:var(--bg);color:var(--text);outline:none}}
-.search-box:focus{{border-color:var(--accent);box-shadow:0 0 0 3px rgba(37,99,235,.15)}}
-select,.btn{{padding:8px 12px;border:1px solid var(--border);border-radius:var(--radius);
-font-size:13px;background:var(--card);color:var(--text);cursor:pointer}}
+.search-box:focus{{border-color:var(--accent);box-shadow:0 0 0 3px rgba(37,99,235,.1)}}
+.toolbar-actions{{display:flex;gap:8px;align-items:center;margin-left:auto;flex-shrink:0}}
+select,.btn{{padding:7px 10px;border:1px solid var(--border);border-radius:6px;
+font-size:12px;background:var(--card);color:var(--text);cursor:pointer}}
 select:focus,.btn:focus{{outline:none;border-color:var(--accent)}}
-.tier-pills{{display:flex;gap:4px}}
-.pill{{padding:5px 12px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;
-border:2px solid var(--border);background:var(--card);color:var(--muted);transition:.15s}}
-.pill:hover{{border-color:var(--accent)}}
-.pill.active{{color:#fff}}
-.pill.active[data-tier="Apply Today"]{{background:var(--red);border-color:var(--red)}}
-.pill.active[data-tier="Apply This Week"]{{background:var(--amber);border-color:var(--amber)}}
-.pill.active[data-tier="Watch List"]{{background:#6b7280;border-color:#6b7280}}
-.pill.active[data-tier="all"]{{background:var(--accent);border-color:var(--accent)}}
-.btn-export{{background:var(--accent);color:#fff;border:none;font-weight:600}}
+select.has-filter{{border-color:var(--accent);color:var(--accent);font-weight:600}}
+.btn-export{{background:var(--accent);color:#fff;border:none;font-weight:600;padding:7px 14px}}
 .btn-export:hover{{opacity:.9}}
+/* Filter groups */
+.filter-group{{display:flex;align-items:center;gap:5px}}
+.filter-label{{font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;
+letter-spacing:.5px;white-space:nowrap;user-select:none}}
+.filter-sep{{width:1px;height:22px;background:var(--border);margin:0 4px;flex-shrink:0}}
+.filter-group--dropdowns select{{padding:5px 8px;font-size:12px}}
+/* Chips */
+.chip-group{{display:flex;gap:3px}}
+.chip{{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:6px;
+font-size:12px;font-weight:500;cursor:pointer;border:1px solid var(--border);
+background:var(--card);color:var(--muted);transition:all .15s;white-space:nowrap;line-height:1.4}}
+.chip:hover{{border-color:var(--accent);color:var(--text);background:var(--bg)}}
+.chip-count{{font-size:10px;font-weight:600;padding:0 5px;border-radius:4px;
+background:var(--bg);color:var(--muted);min-width:16px;text-align:center;line-height:1.6}}
+/* Tier chip active */
+.chip.active[data-tier="all"]{{background:var(--accent);border-color:var(--accent);color:#fff}}
+.chip.active[data-tier="all"] .chip-count{{background:rgba(255,255,255,.2);color:#fff}}
+.chip.active[data-tier="Apply Today"]{{background:var(--red);border-color:var(--red);color:#fff}}
+.chip.active[data-tier="Apply Today"] .chip-count{{background:rgba(255,255,255,.2);color:#fff}}
+.chip.active[data-tier="Apply This Week"]{{background:var(--amber);border-color:var(--amber);color:#fff}}
+.chip.active[data-tier="Apply This Week"] .chip-count{{background:rgba(255,255,255,.2);color:#fff}}
+.chip.active[data-tier="Watch List"]{{background:#6b7280;border-color:#6b7280;color:#fff}}
+.chip.active[data-tier="Watch List"] .chip-count{{background:rgba(255,255,255,.2);color:#fff}}
+/* Work type chip active */
+.chip.active[data-wt="Remote"]{{background:#dcfce7;border-color:#86efac;color:#166534}}
+.chip.active[data-wt="Hybrid"]{{background:#fef3c7;border-color:#fcd34d;color:#92400e}}
+.chip.active[data-wt="On-site"]{{background:#e0e7ff;border-color:#a5b4fc;color:#3730a3}}
+/* Status chip active */
+.chip.active[data-status="New"]{{background:var(--bg);border-color:var(--accent);color:var(--accent)}}
+.chip.active[data-status="Saved"]{{background:#eff6ff;border-color:var(--blue);color:var(--blue)}}
+.chip.active[data-status="Applied"]{{background:#f0fdf4;border-color:var(--green);color:var(--green)}}
+.chip.active[data-status="Interviewing"]{{background:#faf5ff;border-color:var(--purple);color:var(--purple)}}
+.chip.active[data-status="Rejected"]{{background:var(--red-bg);border-color:var(--red);color:var(--red)}}
+/* Clear filters */
+.clear-filters{{display:none;align-items:center;gap:4px;padding:4px 10px;border-radius:6px;
+font-size:12px;font-weight:500;cursor:pointer;border:1px dashed var(--red);
+background:transparent;color:var(--red);transition:all .15s;margin-left:auto;white-space:nowrap}}
+.clear-filters:hover{{background:var(--red-bg)}}
+.clear-filters svg{{width:14px;height:14px}}
+/* Dark mode chip overrides */
+@media(prefers-color-scheme:dark){{
+.chip.active[data-wt="Remote"]{{background:#14532d;color:#86efac;border-color:#22c55e}}
+.chip.active[data-wt="Hybrid"]{{background:#78350f;color:#fcd34d;border-color:#f59e0b}}
+.chip.active[data-wt="On-site"]{{background:#312e81;color:#a5b4fc;border-color:#8b5cf6}}
+.chip.active[data-status="Saved"]{{background:#1e3a5f;color:#93c5fd;border-color:#3b82f6}}
+.chip.active[data-status="Applied"]{{background:#14532d;color:#86efac;border-color:#22c55e}}
+.chip.active[data-status="Interviewing"]{{background:#3b1f6e;color:#c4b5fd;border-color:#8b5cf6}}
+.chip-count{{background:var(--card)}}
+}}
+/* Mobile */
+@media(max-width:768px){{.toolbar-row--primary{{flex-wrap:wrap}}
+.search-wrap{{flex:1 1 100%;min-width:0}}
+.toolbar-actions{{margin-left:0;flex-wrap:wrap;width:100%;justify-content:flex-end}}
+.filter-sep{{display:none}}
+.filter-group{{flex-wrap:wrap}}
+.chip-group{{flex-wrap:wrap}}
+.clear-filters{{margin-left:0;margin-top:4px}}
+}}
 
 .counter-bar{{max-width:1400px;margin:12px auto 0;padding:0 24px;font-size:13px;color:var(--muted)}}
 
@@ -964,20 +1021,57 @@ font-weight:600;font-size:14px;cursor:pointer;text-decoration:none;text-align:ce
 </div></div>
 
 <div class="toolbar"><div class="toolbar-inner">
+<div class="toolbar-row toolbar-row--primary">
+<div class="search-wrap">
+<svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
 <input type="text" class="search-box" id="search" placeholder="Search titles, companies, locations...">
-<select id="companyFilter"><option value="">All Companies</option></select>
-<div class="tier-pills" id="tierPills">
-<div class="pill active" data-tier="all">All</div>
-<div class="pill" data-tier="Apply Today">Apply Today</div>
-<div class="pill" data-tier="Apply This Week">This Week</div>
-<div class="pill" data-tier="Watch List">Watch List</div>
 </div>
-<select id="workTypeFilter">
-<option value="">All Work Types</option>
-<option value="Remote">Remote</option>
-<option value="Hybrid">Hybrid</option>
-<option value="On-site">On-site</option>
+<div class="toolbar-actions">
+<select id="sortBy">
+<option value="combined">Sort: Combined</option>
+<option value="fresh">Sort: Freshness</option>
+<option value="fit">Sort: Fit Score</option>
+<option value="company">Sort: Company A-Z</option>
+<option value="newest">Sort: Newest</option>
 </select>
+<button class="btn btn-export" onclick="exportCSV()">Export CSV</button>
+<button class="btn-upload" onclick="openResumeModal()">Update Resume</button>
+</div>
+</div>
+<div class="toolbar-row toolbar-row--filters">
+<div class="filter-group">
+<span class="filter-label">Priority</span>
+<div class="chip-group" id="tierChips">
+<button class="chip active" data-tier="all">All <span class="chip-count" id="countAll"></span></button>
+<button class="chip" data-tier="Apply Today">Today <span class="chip-count" id="countToday"></span></button>
+<button class="chip" data-tier="Apply This Week">This Week <span class="chip-count" id="countWeek"></span></button>
+<button class="chip" data-tier="Watch List">Watch <span class="chip-count" id="countWatch"></span></button>
+</div>
+</div>
+<div class="filter-sep"></div>
+<div class="filter-group">
+<span class="filter-label">Work</span>
+<div class="chip-group" id="workTypeChips">
+<button class="chip" data-wt="Remote">Remote <span class="chip-count" id="countRemote"></span></button>
+<button class="chip" data-wt="Hybrid">Hybrid <span class="chip-count" id="countHybrid"></span></button>
+<button class="chip" data-wt="On-site">On-site <span class="chip-count" id="countOnsite"></span></button>
+</div>
+</div>
+<div class="filter-sep"></div>
+<div class="filter-group">
+<span class="filter-label">Status</span>
+<div class="chip-group" id="statusChips">
+<button class="chip" data-status="New">New <span class="chip-count" id="countNew"></span></button>
+<button class="chip" data-status="Saved">Saved <span class="chip-count" id="countSaved"></span></button>
+<button class="chip" data-status="Applied">Applied <span class="chip-count" id="countApplied"></span></button>
+<button class="chip" data-status="Interviewing">Interview <span class="chip-count" id="countInterview"></span></button>
+<button class="chip" data-status="Rejected">Rejected <span class="chip-count" id="countRejected"></span></button>
+<button class="chip" data-status="Hidden">Hidden <span class="chip-count" id="countHidden"></span></button>
+</div>
+</div>
+<div class="filter-sep"></div>
+<div class="filter-group filter-group--dropdowns">
+<select id="companyFilter"><option value="">All Companies</option></select>
 <select id="salaryFilter">
 <option value="">All Salaries</option>
 <option value="has">Has Salary</option>
@@ -986,24 +1080,12 @@ font-weight:600;font-size:14px;cursor:pointer;text-decoration:none;text-align:ce
 <option value="200">$200k+</option>
 <option value="250">$250k+</option>
 </select>
-<select id="statusFilter">
-<option value="">All Statuses</option>
-<option value="New">New</option>
-<option value="Saved">Saved</option>
-<option value="Applied">Applied</option>
-<option value="Interviewing">Interviewing</option>
-<option value="Rejected">Rejected</option>
-<option value="Hidden">Hidden</option>
-</select>
-<select id="sortBy">
-<option value="combined">Combined Score</option>
-<option value="fresh">Freshness</option>
-<option value="fit">Fit Score</option>
-<option value="company">Company A-Z</option>
-<option value="newest">Newest First</option>
-</select>
-<button class="btn btn-export" onclick="exportCSV()">Export CSV</button>
-<button class="btn-upload" onclick="openResumeModal()">Update Resume</button>
+</div>
+<button class="clear-filters" id="clearFilters" onclick="clearAllFilters()">
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6M9 9l6 6"/></svg>
+Clear filters
+</button>
+</div>
 </div></div>
 
 <div class="counter-bar" id="counterBar"></div>
@@ -1060,6 +1142,8 @@ function getState(){{const s=loadState();s.statuses=s.statuses||{{}};s.notes=s.n
 
 let state=getState();
 let activeTier='all';
+let activeWorkTypes=new Set();
+let activeStatuses=new Set();
 let currentModalId=null;
 
 function esc(s){{const d=document.createElement('div');d.textContent=s;return d.innerHTML}}
@@ -1105,17 +1189,15 @@ return m?parseInt(m[1].replace(/,/g,''),10):0;
 function getFiltered(){{
 const q=document.getElementById('search').value.toLowerCase();
 const co=document.getElementById('companyFilter').value;
-const sf=document.getElementById('statusFilter').value;
-const wt=document.getElementById('workTypeFilter').value;
 const sal=document.getElementById('salaryFilter').value;
 let jobs=JOBS.filter(j=>{{
-if(sf==='Hidden')return state.hidden.includes(j.id);
+if(activeStatuses.has('Hidden'))return state.hidden.includes(j.id);
 if(state.hidden.includes(j.id))return false;
 if(activeTier!=='all'&&j.tier!==activeTier)return false;
 if(co&&j.companySlug!==co)return false;
-if(wt&&j.workType!==wt)return false;
+if(activeWorkTypes.size>0&&!activeWorkTypes.has(j.workType))return false;
 if(sal){{if(sal==='has'){{if(!j.salary)return false}}else{{var minSal=parseInt(sal,10)*1000;if(parseSalaryNum(j.salary)<minSal)return false}}}}
-if(sf){{const st=state.statuses[j.id]||'New';if(st!==sf)return false}}
+if(activeStatuses.size>0&&!activeStatuses.has('Hidden')){{var st=state.statuses[j.id]||'New';if(!activeStatuses.has(st))return false}}
 if(q){{const txt=(j.title+' '+j.company+' '+j.location).toLowerCase();if(!txt.includes(q))return false}}
 return true}});
 const sort=document.getElementById('sortBy').value;
@@ -1130,13 +1212,66 @@ return jobs}}
 function render(){{
 const jobs=getFiltered();
 document.getElementById('grid').innerHTML=jobs.map(renderCard).join('');
-document.getElementById('counterBar').textContent=`Showing ${{jobs.length}} of ${{JOBS.length}} roles`;
-const counts={{}};JOBS.forEach(j=>{{counts[j.tier]=(counts[j.tier]||0)+1}});
+document.getElementById('counterBar').textContent='Showing '+jobs.length+' of '+JOBS.length+' roles';
+var counts={{}};JOBS.forEach(function(j){{counts[j.tier]=(counts[j.tier]||0)+1}});
 document.getElementById('tierBadges').innerHTML=
-`<span class="stat-badge stat-red">${{counts['Apply Today']||0}} today</span>`+
-`<span class="stat-badge stat-amber">${{counts['Apply This Week']||0}} this week</span>`+
-`<span class="stat-badge stat-gray">${{counts['Watch List']||0}} watch</span>`;
+'<span class="stat-badge stat-red">'+(counts['Apply Today']||0)+' today</span>'+
+'<span class="stat-badge stat-amber">'+(counts['Apply This Week']||0)+' this week</span>'+
+'<span class="stat-badge stat-gray">'+(counts['Watch List']||0)+' watch</span>';
 document.getElementById('totalCount').textContent=JOBS.length;
+updateCounts();
+updateClearBtn();
+}}
+
+function updateCounts(){{
+var visible=JOBS.filter(function(j){{return !state.hidden.includes(j.id)}});
+/* Tier counts (full set) */
+var tc={{'Apply Today':0,'Apply This Week':0,'Watch List':0}};
+visible.forEach(function(j){{tc[j.tier]=(tc[j.tier]||0)+1}});
+document.getElementById('countAll').textContent=visible.length;
+document.getElementById('countToday').textContent=tc['Apply Today']||0;
+document.getElementById('countWeek').textContent=tc['Apply This Week']||0;
+document.getElementById('countWatch').textContent=tc['Watch List']||0;
+/* Work type counts */
+var wc={{'Remote':0,'Hybrid':0,'On-site':0}};
+visible.forEach(function(j){{wc[j.workType]=(wc[j.workType]||0)+1}});
+document.getElementById('countRemote').textContent=wc['Remote']||0;
+document.getElementById('countHybrid').textContent=wc['Hybrid']||0;
+document.getElementById('countOnsite').textContent=wc['On-site']||0;
+/* Status counts */
+var sc={{}};
+visible.forEach(function(j){{var s=state.statuses[j.id]||'New';sc[s]=(sc[s]||0)+1}});
+sc['Hidden']=state.hidden.length;
+['New','Saved','Applied','Interviewing','Rejected','Hidden'].forEach(function(s){{
+var id='count'+s.replace('Interviewing','Interview');
+var el=document.getElementById(id);if(el)el.textContent=sc[s]||0;
+}});
+}}
+
+function updateClearBtn(){{
+var hasFilters=activeTier!=='all'||activeWorkTypes.size>0||activeStatuses.size>0
+||document.getElementById('companyFilter').value!==''
+||document.getElementById('salaryFilter').value!==''
+||document.getElementById('search').value!=='';
+document.getElementById('clearFilters').style.display=hasFilters?'inline-flex':'none';
+var co=document.getElementById('companyFilter');
+co.classList.toggle('has-filter',co.value!=='');
+var sal=document.getElementById('salaryFilter');
+sal.classList.toggle('has-filter',sal.value!=='');
+}}
+
+function clearAllFilters(){{
+activeTier='all';
+activeWorkTypes.clear();
+activeStatuses.clear();
+document.querySelectorAll('#tierChips .chip').forEach(function(c){{c.classList.remove('active')}});
+document.querySelector('#tierChips .chip[data-tier="all"]').classList.add('active');
+document.querySelectorAll('#workTypeChips .chip').forEach(function(c){{c.classList.remove('active')}});
+document.querySelectorAll('#statusChips .chip').forEach(function(c){{c.classList.remove('active')}});
+document.getElementById('companyFilter').value='';
+document.getElementById('salaryFilter').value='';
+document.getElementById('search').value='';
+render();
 }}
 
 function initCompanies(){{
@@ -1389,13 +1524,31 @@ if(e.target===this)closeResumeModal()}});
 
 document.getElementById('search').addEventListener('input',render);
 document.getElementById('companyFilter').addEventListener('change',render);
-document.getElementById('statusFilter').addEventListener('change',render);
-document.getElementById('workTypeFilter').addEventListener('change',render);
 document.getElementById('salaryFilter').addEventListener('change',render);
 document.getElementById('sortBy').addEventListener('change',render);
-document.querySelectorAll('.pill').forEach(p=>p.addEventListener('click',function(){{
-document.querySelectorAll('.pill').forEach(x=>x.classList.remove('active'));
-this.classList.add('active');activeTier=this.dataset.tier;render()}}));
+
+/* Tier chips: single-select */
+document.querySelectorAll('#tierChips .chip').forEach(function(c){{c.addEventListener('click',function(){{
+document.querySelectorAll('#tierChips .chip').forEach(function(x){{x.classList.remove('active')}});
+this.classList.add('active');activeTier=this.dataset.tier;render();
+}})}});
+
+/* Work type chips: multi-select toggle */
+document.querySelectorAll('#workTypeChips .chip').forEach(function(c){{c.addEventListener('click',function(){{
+var wt=this.dataset.wt;
+if(activeWorkTypes.has(wt)){{activeWorkTypes.delete(wt);this.classList.remove('active')}}
+else{{activeWorkTypes.add(wt);this.classList.add('active')}}
+render();
+}})}});
+
+/* Status chips: multi-select toggle */
+document.querySelectorAll('#statusChips .chip').forEach(function(c){{c.addEventListener('click',function(){{
+var st=this.dataset.status;
+if(activeStatuses.has(st)){{activeStatuses.delete(st);this.classList.remove('active')}}
+else{{activeStatuses.add(st);this.classList.add('active')}}
+render();
+}})}});
+
 document.getElementById('modalOverlay').addEventListener('click',function(e){{
 if(e.target===this)closeModal()}});
 document.addEventListener('keydown',function(e){{if(e.key==='Escape'){{closeModal();closeResumeModal()}}}});

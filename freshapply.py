@@ -354,22 +354,34 @@ def _sanitize_html(raw: str) -> str:
     """Keep basic formatting tags but remove scripts, styles, events, and ATS boilerplate."""
     if not raw:
         return ""
-    text = re.sub(r"<script[^>]*>.*?</script>", "", raw, flags=re.DOTALL | re.IGNORECASE)
-    text = re.sub(r"<style[^>]*>.*?</style>", "", raw, flags=re.DOTALL | re.IGNORECASE)
+    # Decode HTML entities first — some ATS systems store entity-encoded HTML
+    text = html_mod.unescape(raw)
+    text = re.sub(r"<script[^>]*>.*?</script>", "", text, flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(r"<style[^>]*>.*?</style>", "", text, flags=re.DOTALL | re.IGNORECASE)
     text = re.sub(r'\s+on\w+\s*=\s*"[^"]*"', "", text)
     text = re.sub(r"\s+on\w+\s*=\s*'[^']*'", "", text)
-    # Remove pay-transparency / compensation sections (already extracted as salary)
+    # Remove pay-transparency / compensation / conclusion sections entirely
+    # These use DOTALL + greedy .* to strip from the div to the end of the string
+    # (everything after pay-transparency is boilerplate: conclusion, about us, EEO, etc.)
     text = re.sub(r'<div[^>]*class="[^"]*pay-transparency[^"]*"[^>]*>.*', "", text, flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(r'<div[^>]*class="[^"]*content-pay[^"]*"[^>]*>.*', "", text, flags=re.DOTALL | re.IGNORECASE)
     text = re.sub(r'<div[^>]*class="[^"]*compensation[^"]*"[^>]*>.*', "", text, flags=re.DOTALL | re.IGNORECASE)
-    # Strip ATS wrapper divs (keep inner content)
-    text = re.sub(r'<div[^>]*class="[^"]*content-[^"]*"[^>]*>', "", text, flags=re.IGNORECASE)
-    # Clean up &nbsp;
+    text = re.sub(r'<div[^>]*class="[^"]*content-conclusion[^"]*"[^>]*>.*', "", text, flags=re.DOTALL | re.IGNORECASE)
+    # Remove common ATS boilerplate sections by heading text
+    text = re.sub(r'<p>\s*<strong>\s*(?:PLEASE NOTE|About Us|EEO|Equal Opportunity)[^<]*</strong>.*', "", text, flags=re.DOTALL | re.IGNORECASE)
+    # Strip all div tags (opening and closing) — they add no formatting value
+    text = re.sub(r"</?div[^>]*>", "", text, flags=re.IGNORECASE)
+    # Clean up &nbsp; and other HTML entities
     text = text.replace("&nbsp;", " ")
+    text = text.replace("&mdash;", "—")
+    text = text.replace("&ndash;", "–")
     # Remove empty paragraphs
-    text = re.sub(r"<p>\s*</p>", "", text)
-    # Strip class/style/id attributes from remaining tags
+    text = re.sub(r"<p>\s*</p>", "", text, flags=re.IGNORECASE)
+    # Strip class/style/id/data attributes from remaining tags
     text = re.sub(r'\s+(?:class|style|id|data-\w+)\s*=\s*"[^"]*"', "", text)
     text = re.sub(r"\s+(?:class|style|id|data-\w+)\s*=\s*'[^']*'", "", text)
+    # Collapse excessive whitespace / blank lines
+    text = re.sub(r"(\s*\n){3,}", "\n\n", text)
     return text.strip()
 
 
@@ -799,7 +811,7 @@ def generate_html_dashboard(conn: sqlite3.Connection):
             "lastSeen": job["last_seen_at"][:10],
             "breakdown": breakdown,
             "suggestions": suggestions,
-            "descHtml": (job.get("description_html") or "")[:8000],
+            "descHtml": _sanitize_html((job.get("description_html") or "")[:10000]),
             "description": (job["description"] or "")[:3000],
         })
 
@@ -968,6 +980,10 @@ background:var(--card);color:var(--text)}}
 .status-select.s-interviewing{{border-color:var(--purple);color:var(--purple)}}
 .status-select.s-rejected{{border-color:var(--red);color:var(--red)}}
 .has-note{{display:inline-block;width:8px;height:8px;background:var(--amber);border-radius:50%;margin-left:6px;vertical-align:middle}}
+.card-actions{{display:flex;gap:6px;align-items:center}}
+.btn-card-apply{{padding:4px 10px;font-size:11px;font-weight:600;border-radius:6px;border:none;
+background:var(--accent);color:#fff;cursor:pointer;text-decoration:none;white-space:nowrap}}
+.btn-card-apply:hover{{opacity:.85}}
 
 /* Modal */
 .modal-overlay{{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:200;
@@ -980,8 +996,9 @@ cursor:pointer;color:var(--muted);line-height:1}}
 .modal-close:hover{{color:var(--text)}}
 .modal h2{{font-size:20px;margin-bottom:4px;padding-right:30px}}
 .modal h4{{font-size:14px;margin-top:18px;margin-bottom:6px;color:var(--text)}}
-.modal .m-meta{{color:var(--muted);font-size:14px;margin-bottom:16px}}
-.modal .m-salary{{font-size:15px;font-weight:700;color:var(--green);margin-bottom:12px}}
+.modal .m-meta{{color:var(--muted);font-size:14px;margin-bottom:12px}}
+.modal .m-header-actions{{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;gap:12px}}
+.modal .m-salary{{font-size:15px;font-weight:700;color:var(--green);margin:0}}
 .modal .m-scores{{display:flex;gap:20px;margin-bottom:16px}}
 .modal .m-score-box{{text-align:center;padding:10px 16px;border-radius:var(--radius);background:var(--bg)}}
 .modal .m-score-val{{font-size:28px;font-weight:700}}
@@ -1154,7 +1171,10 @@ Clear filters
 <button class="modal-close" onclick="closeModal()">&times;</button>
 <h2 id="mTitle"></h2>
 <div class="m-meta" id="mMeta"></div>
+<div class="m-header-actions">
 <div class="m-salary" id="mSalary"></div>
+<a class="btn-apply" id="mApplyBtn" href="#" target="_blank">Apply Now &rarr;</a>
+</div>
 <div class="m-scores" id="mScores"></div>
 <h4>Fit Score Breakdown</h4>
 <table class="breakdown-table"><thead><tr><th>Category</th><th>Weight</th><th>Status</th></tr></thead>
@@ -1164,9 +1184,6 @@ Clear filters
 <div class="m-desc" id="mDesc"></div>
 <h4>Your Notes</h4>
 <textarea class="m-notes" id="mNotes" placeholder="Track your progress: referral contacts, follow-up dates, interview prep notes..."></textarea>
-<div class="m-actions">
-<a class="btn-apply" id="mApplyBtn" href="#" target="_blank">Open Application &rarr;</a>
-</div>
 </div>
 </div>
 
@@ -1232,9 +1249,12 @@ ${{salaryHtml}}
 </div>
 <div class="card-foot">
 <span class="card-date">First seen ${{j.firstSeen}}${{hasNote}}</span>
+<div class="card-actions">
 <select class="status-select ${{statusClass(s)}}" onclick="event.stopPropagation()" onchange="setStatus('${{esc(j.id)}}',this.value,this)">
 ${{['New','Saved','Applied','Interviewing','Rejected'].map(function(o){{return '<option '+(o===s?'selected':'')+'>'+o+'</option>'}}).join('')}}
 </select>
+<a class="btn-card-apply" href="${{esc(j.url)}}" target="_blank" onclick="event.stopPropagation()">Apply</a>
+</div>
 </div></div>`;
 }}
 

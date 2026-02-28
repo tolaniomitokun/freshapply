@@ -9,10 +9,30 @@ A zero-dependency Python tool that scrapes PM and AI PM job postings from 65+ te
 ## Quick Start
 
 ```bash
+cp resume.example.json resume.json   # Edit with your info
 python3 freshapply.py
 ```
 
 That's it. No `pip install`, no API keys, no config files. Just Python 3.10+ standard library.
+
+### Setup your resume
+
+Copy the example and fill in your details:
+
+```bash
+cp resume.example.json resume.json
+```
+
+Edit `resume.json` with your name, location, experience, and skills. The fields that matter most:
+
+| Field | What it does |
+|-------|-------------|
+| `country` / `city` | Flags jobs as Local, Relocation, or International |
+| `headline` / `tagline` | Used in tailored resume downloads |
+| `experience` | Bullets are reordered per job based on keyword relevance |
+| `competencies` | Ranked and reordered in tailored resumes |
+
+`resume.json` is gitignored — your personal data stays local.
 
 ## What It Does
 

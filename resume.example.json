@@ -1,0 +1,57 @@
+{
+  "name": "YOUR NAME",
+  "country": "US",
+  "city": "San Francisco, CA",
+  "contact": "San Francisco, CA  |  email@example.com  |  555-555-5555  |  LinkedIn  |  yourwebsite.com",
+  "headline": "AI PRODUCT MANAGER",
+  "tagline": "AI/ML Products  |  LLMs & Generative AI  |  0-1 Product Strategy  |  Data-Driven Decisions",
+  "summary": "AI product manager with experience driving product strategy and execution for AI/ML-powered products. Background in shipping LLM-based features, building evaluation frameworks, and partnering with engineering and data science teams to deliver measurable outcomes.",
+  "competencies": [
+    "AI/ML Product Strategy",
+    "LLMs & Generative AI",
+    "Product Roadmapping",
+    "User Research & Discovery",
+    "A/B Testing & Experimentation",
+    "Cross-Functional Leadership",
+    "Agile / Scrum",
+    "Data Analysis & SQL",
+    "Prompt Engineering",
+    "OKRs & Product Analytics"
+  ],
+  "experience": [
+    {
+      "section": "PROFESSIONAL EXPERIENCE",
+      "company": "COMPANY NAME",
+      "title": "AI Product Manager",
+      "location": "San Francisco, CA",
+      "dates": "2023 - Present",
+      "overview": "Led AI product strategy for [product] serving [X]+ users.",
+      "bullets": [
+        "Shipped AI-powered feature that [outcome], driving [X%] improvement in [metric]",
+        "Partnered with ML engineering to build and deploy [AI capability] at scale",
+        "Defined product roadmap and OKRs, increasing [metric] by [X%] quarter-over-quarter",
+        "Led cross-functional team of [X] engineers, designers, and data scientists"
+      ]
+    },
+    {
+      "section": "",
+      "company": "PREVIOUS COMPANY",
+      "title": "Product Manager",
+      "location": "New York, NY",
+      "dates": "2020 - 2023",
+      "overview": "",
+      "bullets": [
+        "Managed product lifecycle for [product] generating [$X]M in annual revenue",
+        "Directed user research and feature prioritization, improving task completion by [X%]",
+        "Launched [feature] resulting in [X%] increase in user engagement"
+      ]
+    }
+  ],
+  "tools": {
+    "AI & ML": "ChatGPT, Claude, Gemini, Hugging Face",
+    "Product": "Jira, Confluence, Figma, Amplitude, Notion",
+    "Data": "SQL, Python, Google Analytics, Tableau, A/B Testing",
+    "Comms": "Slack, Loom, Google Workspace"
+  },
+  "education": "BS in [Field], [University], [Year]  |  [Certifications]"
+}

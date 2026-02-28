@@ -838,88 +838,104 @@ def generate_digest(conn: sqlite3.Connection):
 
 # ── HTML Dashboard ───────────────────────────────────────────────────────────
 
-def _build_resume_suggestions(breakdown: list[dict], fit: int) -> list[dict]:
-    """For unmatched or under-matched keyword buckets, return resume improvement tips."""
-    tips_map = {
-        "AI / ML": {
-            "keywords": "AI, machine learning, ML, LLM, NLP, generative AI, deep learning, GPT, transformer models",
-            "bullets": [
-                "Led AI/ML product strategy for [product], driving [X%] adoption among enterprise customers",
-                "Defined and shipped LLM-powered features that reduced [process] time by [X%]",
-                "Partnered with ML engineering to build and deploy generative AI capabilities at scale",
-            ],
-            "learning": [
-                "Complete a generative AI or LLM course (DeepLearning.AI, Coursera, or fast.ai)",
-                "Build a hands-on project using LangChain, RAG pipelines, or agentic frameworks",
-                "Practice prompt engineering and learn model evaluation (evals) techniques",
-            ],
-        },
-        "Seniority": {
-            "keywords": "senior, staff, principal, director, lead, head of, VP",
-            "bullets": [
-                "Led cross-functional team of [X] engineers, designers, and data scientists to deliver [product]",
-                "Directed product strategy and roadmap for a [X]-person org generating [$X]M ARR",
-                "Mentored [X] PMs and established product development best practices across the organization",
-            ],
-            "learning": [
-                "Seek leadership opportunities: lead a cross-functional initiative or mentor junior PMs",
-                "Take a strategic leadership course (Reforge, Product Faculty, or similar)",
-                "Document and quantify your leadership impact with measurable outcomes",
-            ],
-        },
-        "Domain Fit": {
-            "keywords": "platform, enterprise, infrastructure, workflow, automation, agent, agentic",
-            "bullets": [
-                "Built enterprise platform features serving [X]+ B2B customers with [X]% retention",
-                "Designed workflow automation tools that reduced manual processes by [X%] across [X] teams",
-                "Owned infrastructure product roadmap powering [X]M+ API calls per day",
-            ],
-            "learning": [
-                "Study platform/infrastructure product patterns (APIs, SDKs, developer experience)",
-                "Build or contribute to a workflow automation or agentic AI project",
-                "Learn enterprise product concepts: multi-tenancy, RBAC, compliance, and SLAs",
-            ],
-        },
-        "Industry Verticals": {
-            "keywords": "real estate, proptech, healthcare, health tech, clinical",
-            "bullets": [
-                "Launched [healthcare/real estate] product vertical generating [$X]M in first-year revenue",
-                "Built HIPAA-compliant / proptech solutions used by [X]+ [providers/agents]",
-                "Developed domain-specific features for [industry] reducing customer onboarding time by [X%]",
-            ],
-            "learning": [
-                "Research the target industry's regulations, workflows, and pain points",
-                "Network with domain experts and attend industry-specific conferences or webinars",
-                "Build a side project or case study targeting the specific vertical",
-            ],
-        },
+def _build_resume_suggestions(breakdown: list[dict], fit: int,
+                              title: str = "", description: str = "") -> list[dict]:
+    """For unmatched or under-matched keyword buckets, return job-specific resume tips."""
+    text = f"{title} {description}".lower()
+
+    # Map each pattern to a human-readable label
+    _pattern_labels = {
+        r"\bai\b": "AI", r"\bartificial\s+intelligence\b": "artificial intelligence",
+        r"\bmachine\s+learning\b": "machine learning", r"\bml\b": "ML",
+        r"\bllms?\b": "LLM", r"\blarge\s+language\s+model": "large language model",
+        r"\bgenerative\b": "generative", r"\bdeep\s+learning\b": "deep learning",
+        r"\bnlp\b": "NLP", r"\bfoundation\s+models?\b": "foundation models",
+        r"\bgpt\b": "GPT", r"\btransformers?\b": "transformers",
+        r"\bsenior\b": "senior", r"\bstaff\b": "staff", r"\bprincipal\b": "principal",
+        r"\bdirector\b": "director", r"\blead\b": "lead", r"\bhead\s+of\b": "head of",
+        r"\bvp\b": "VP",
+        r"\bplatforms?\b": "platform", r"\benterprise\b": "enterprise",
+        r"\binfrastructure\b": "infrastructure", r"\bworkflows?\b": "workflow",
+        r"\bautomation\b": "automation", r"\bagents?\b": "agent", r"\bagentic\b": "agentic",
+        r"\breal\s+estate\b": "real estate", r"\bproptech\b": "proptech",
+        r"\bhealthcare\b": "healthcare", r"\bhealth\s+tech\b": "health tech",
+        r"\bclinical\b": "clinical",
     }
+
     suggestions = []
     for b in breakdown:
-        if b["bucket"] not in tips_map:
+        if b["bucket"] not in FIT_KEYWORDS:
             continue
-        tip = tips_map[b["bucket"]]
-        if b["matched"] is None:
-            # Completely missing — high priority
-            suggestions.append({
-                "bucket": b["bucket"],
-                "weight": b["maxPts"],
-                "status": "missing",
-                "keywords": tip["keywords"],
-                "bullets": tip["bullets"],
-                "learning": tip.get("learning", []),
-            })
-        elif b["weight"] < b["maxPts"]:
-            # Partially matched — can earn more points
-            gap = b["maxPts"] - b["weight"]
-            suggestions.append({
-                "bucket": b["bucket"],
-                "weight": gap,
-                "status": "partial",
-                "keywords": tip["keywords"],
-                "bullets": tip["bullets"],
-                "learning": tip.get("learning", []),
-            })
+        cfg = FIT_KEYWORDS[b["bucket"]]
+
+        # Find which patterns appear in the job but were NOT matched in the score
+        matched_set = set((b.get("matched") or "").lower().split(", ")) if b["matched"] else set()
+        job_has = []  # keywords this job uses
+        job_missing = []  # keywords in this job that your resume didn't surface
+        for pat in cfg["patterns"]:
+            label = _pattern_labels.get(pat, pat.strip(r"\b").replace("\\s+", " "))
+            m = re.search(pat, text, re.IGNORECASE)
+            if m:
+                job_has.append(label)
+                if m.group(0).lower() not in matched_set:
+                    job_missing.append(label)
+
+        if not job_has:
+            continue  # job doesn't use keywords from this bucket, skip
+
+        gap = b["maxPts"] - b["weight"]
+        if gap <= 0:
+            continue  # fully matched
+
+        status = "missing" if b["matched"] is None else "partial"
+        keywords_str = ", ".join(job_has)
+        missing_str = ", ".join(job_missing) if job_missing else ""
+
+        # Build job-specific bullet suggestions based on what the job actually asks for
+        bullets = []
+        bucket = b["bucket"]
+        if bucket == "AI / ML":
+            techs = ", ".join(job_has[:3])
+            bullets = [
+                f"Shipped {techs}-powered features that [outcome] for [X]+ users",
+                f"Partnered with ML/data science teams to build {job_has[0]} capabilities from 0→1",
+            ]
+            if any(kw in job_has for kw in ["LLM", "generative", "GPT", "large language model"]):
+                bullets.append("Designed LLM evaluation framework reducing hallucinations by [X%]")
+            if any(kw in job_has for kw in ["NLP", "transformers"]):
+                bullets.append(f"Built NLP/transformer-based product features processing [X]M+ queries")
+        elif bucket == "Seniority":
+            levels = ", ".join(job_has)
+            bullets = [
+                f"Led cross-functional team of [X] engineers, designers, and data scientists as {job_has[0]} PM",
+                f"Directed product strategy for [product] driving [$X]M ARR",
+            ]
+        elif bucket == "Domain Fit":
+            domains = ", ".join(job_has[:3])
+            bullets = [
+                f"Built {domains} product serving [X]+ customers with [X]% retention",
+            ]
+            if "workflow" in job_has or "automation" in job_has:
+                bullets.append("Designed workflow automation reducing manual processes by [X%]")
+            if "agent" in job_has or "agentic" in job_has:
+                bullets.append("Shipped agentic AI product with autonomous task completion")
+            if "platform" in job_has or "infrastructure" in job_has:
+                bullets.append("Owned platform roadmap powering [X]M+ API calls/day")
+        elif bucket == "Industry Verticals":
+            verticals = ", ".join(job_has)
+            bullets = [
+                f"Launched {verticals} product vertical generating [$X]M first-year revenue",
+                f"Built domain-specific features for {verticals} reducing [metric] by [X%]",
+            ]
+
+        suggestions.append({
+            "bucket": bucket,
+            "weight": gap,
+            "status": status,
+            "keywords": keywords_str,
+            "missing": missing_str,
+            "bullets": bullets,
+        })
     return suggestions
 
 
@@ -949,7 +965,7 @@ def generate_html_dashboard(conn: sqlite3.Connection):
         combined = round(fresh * 0.4 + fit * 0.6, 1)
         breakdown = compute_fit_breakdown(title, job["description"] or "")
         display = DISPLAY_NAMES.get(job["company"], job["company"].replace("-", " ").title())
-        suggestions = _build_resume_suggestions(breakdown, fit) if fit < 75 else []
+        suggestions = _build_resume_suggestions(breakdown, fit, title, job["description"] or "") if fit < 75 else []
         salary = job.get("salary", "") or _extract_salary(job["description"] or "")
         # Use ATS-provided work type if available, otherwise classify from location
         ats_wt = job.get("work_type") or ""
@@ -1610,21 +1626,18 @@ return '<tr><td>'+esc(b.bucket)+'</td><td>'+b.weight+'/'+b.maxPts+' pts</td><td>
 const gapEl=document.getElementById('mGap');
 if(j.fit<75 && j.suggestions && j.suggestions.length>0){{
 var gh='<div class="gap-section"><h4>Resume Gap Analysis (Fit: '+j.fit+'/100)</h4>';
-gh+='<p style="font-size:12px;margin-bottom:8px">Improve your match by addressing these keyword gaps:</p>';
+gh+='<p style="font-size:12px;margin-bottom:8px">This job uses keywords your resume should address:</p>';
 j.suggestions.forEach(function(s){{
 var label=s.status==='missing'?'MISSING':'NEEDS MORE';
 var labelColor=s.status==='missing'?'var(--red)':'var(--amber)';
 var bullets=s.bullets.map(function(b){{return '<li>'+esc(b)+'</li>'}}).join('');
 gh+='<div class="gap-item">';
 gh+='<div class="gap-item-head"><span style="color:'+labelColor+'">'+label+':</span> '+esc(s.bucket)+' <span class="pts">(+'+s.weight+' pts available)</span></div>';
-gh+='<div class="gap-keywords">Add keywords: '+esc(s.keywords)+'</div>';
-gh+='<div class="gap-sub-label">Resume bullet suggestions:</div>';
+gh+='<div class="gap-keywords">Job uses: '+esc(s.keywords)+'</div>';
+if(s.missing){{gh+='<div class="gap-keywords" style="color:var(--red)">Not in your resume: '+esc(s.missing)+'</div>'}}
+gh+='<div class="gap-sub-label">Suggested bullets for this job:</div>';
 gh+='<ul class="gap-bullets">'+bullets+'</ul>';
-if(s.learning&&s.learning.length>0){{
-gh+='<div class="gap-sub-label gap-learn-label">Learning recommendations:</div>';
-gh+='<ul class="gap-learn">';
-s.learning.forEach(function(l){{gh+='<li>'+esc(l)+'</li>'}});
-gh+='</ul>';
+if(false){{
 }}
 gh+='</div>';
 }});
@@ -1953,24 +1966,39 @@ if(j.fresh>=80&&j.fit>=40&&hasAi)j.tier='Today';
 else if(j.fresh>=55&&j.fit>=25)j.tier='This Week';
 else j.tier='1 Week+';
 j.combined=Math.round((j.fresh*0.4+j.fit*0.6)*10)/10;
-/* Re-compute suggestions */
+/* Re-compute job-specific suggestions */
 j.suggestions=[];
 if(j.fit<75){{
-var tipsMap={{
-'AI / ML':{{keywords:'AI, machine learning, ML, LLM, NLP, generative AI, deep learning, GPT, transformer models',bullets:['Led AI/ML product strategy for [product]','Defined and shipped LLM-powered features','Partnered with ML engineering to build generative AI capabilities']}},
-'Seniority':{{keywords:'senior, staff, principal, director, lead, head of, VP',bullets:['Led cross-functional team of [X] engineers','Directed product strategy for a [X]-person org','Mentored [X] PMs and established best practices']}},
-'Domain Fit':{{keywords:'platform, enterprise, infrastructure, workflow, automation, agent, agentic',bullets:['Built enterprise platform features serving [X]+ customers','Designed workflow automation tools','Owned infrastructure product roadmap']}},
-'Industry Verticals':{{keywords:'real estate, proptech, healthcare, health tech, clinical',bullets:['Launched [healthcare/real estate] product vertical','Built HIPAA-compliant / proptech solutions','Developed domain-specific features for [industry]']}}
-}};
 for(var si=0;si<breakdown.length;si++){{
 var b=breakdown[si];
-var tip=tipsMap[b.bucket];
-if(!tip)continue;
-if(b.matched===null){{
-j.suggestions.push({{bucket:b.bucket,weight:b.maxPts,status:'missing',keywords:tip.keywords,bullets:tip.bullets,learning:[]}});
-}}else if(b.weight<b.maxPts){{
-j.suggestions.push({{bucket:b.bucket,weight:b.maxPts-b.weight,status:'partial',keywords:tip.keywords,bullets:tip.bullets,learning:[]}});
+var cfg=FIT_KW[b.bucket];if(!cfg)continue;
+var gap=b.maxPts-b.weight;if(gap<=0)continue;
+/* Find which keywords this job actually uses */
+var jobHas=[];var matchedSet=new Set((b.matched||'').toLowerCase().split(', '));
+for(var pi=0;pi<cfg.patterns.length;pi++){{
+try{{var rx=new RegExp(cfg.patterns[pi],'i');var m=rx.exec(text);
+if(m)jobHas.push(m[0])}}catch(e){{}}
 }}
+if(jobHas.length===0)continue;
+var status=b.matched===null?'missing':'partial';
+var kwStr=jobHas.join(', ');
+/* Build job-specific bullets */
+var bulls=[];
+if(b.bucket==='AI / ML'){{
+var techs=jobHas.slice(0,3).join(', ');
+bulls.push('Shipped '+techs+'-powered features that [outcome] for [X]+ users');
+bulls.push('Partnered with ML/data science teams to build '+jobHas[0]+' capabilities from 0 to 1');
+}}else if(b.bucket==='Seniority'){{
+bulls.push('Led cross-functional team of [X] as '+jobHas[0]+' PM delivering [product]');
+bulls.push('Directed product strategy for [product] driving [$X]M ARR');
+}}else if(b.bucket==='Domain Fit'){{
+bulls.push('Built '+jobHas.slice(0,2).join(', ')+' product serving [X]+ customers');
+if(jobHas.indexOf('workflow')!==-1||jobHas.indexOf('automation')!==-1)bulls.push('Designed workflow automation reducing manual processes by [X%]');
+if(jobHas.indexOf('agent')!==-1||jobHas.indexOf('agents')!==-1)bulls.push('Shipped agentic AI product with autonomous task completion');
+}}else if(b.bucket==='Industry Verticals'){{
+bulls.push('Launched '+jobHas.join(', ')+' product vertical generating [$X]M revenue');
+}}
+j.suggestions.push({{bucket:b.bucket,weight:gap,status:status,keywords:kwStr,missing:'',bullets:bulls}});
 }}
 }}
 }});

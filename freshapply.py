@@ -351,13 +351,25 @@ def _strip_html(raw: str) -> str:
 
 
 def _sanitize_html(raw: str) -> str:
-    """Keep basic formatting tags but remove scripts, styles, and event handlers."""
+    """Keep basic formatting tags but remove scripts, styles, events, and ATS boilerplate."""
     if not raw:
         return ""
     text = re.sub(r"<script[^>]*>.*?</script>", "", raw, flags=re.DOTALL | re.IGNORECASE)
     text = re.sub(r"<style[^>]*>.*?</style>", "", raw, flags=re.DOTALL | re.IGNORECASE)
     text = re.sub(r'\s+on\w+\s*=\s*"[^"]*"', "", text)
     text = re.sub(r"\s+on\w+\s*=\s*'[^']*'", "", text)
+    # Remove pay-transparency / compensation sections (already extracted as salary)
+    text = re.sub(r'<div[^>]*class="[^"]*pay-transparency[^"]*"[^>]*>.*', "", text, flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(r'<div[^>]*class="[^"]*compensation[^"]*"[^>]*>.*', "", text, flags=re.DOTALL | re.IGNORECASE)
+    # Strip ATS wrapper divs (keep inner content)
+    text = re.sub(r'<div[^>]*class="[^"]*content-[^"]*"[^>]*>', "", text, flags=re.IGNORECASE)
+    # Clean up &nbsp;
+    text = text.replace("&nbsp;", " ")
+    # Remove empty paragraphs
+    text = re.sub(r"<p>\s*</p>", "", text)
+    # Strip class/style/id attributes from remaining tags
+    text = re.sub(r'\s+(?:class|style|id|data-\w+)\s*=\s*"[^"]*"', "", text)
+    text = re.sub(r"\s+(?:class|style|id|data-\w+)\s*=\s*'[^']*'", "", text)
     return text.strip()
 
 
@@ -658,6 +670,11 @@ def _build_resume_suggestions(breakdown: list[dict], fit: int) -> list[dict]:
                 "Defined and shipped LLM-powered features that reduced [process] time by [X%]",
                 "Partnered with ML engineering to build and deploy generative AI capabilities at scale",
             ],
+            "learning": [
+                "Complete a generative AI or LLM course (DeepLearning.AI, Coursera, or fast.ai)",
+                "Build a hands-on project using LangChain, RAG pipelines, or agentic frameworks",
+                "Practice prompt engineering and learn model evaluation (evals) techniques",
+            ],
         },
         "Seniority": {
             "keywords": "senior, staff, principal, director, lead, head of, VP",
@@ -665,6 +682,11 @@ def _build_resume_suggestions(breakdown: list[dict], fit: int) -> list[dict]:
                 "Led cross-functional team of [X] engineers, designers, and data scientists to deliver [product]",
                 "Directed product strategy and roadmap for a [X]-person org generating [$X]M ARR",
                 "Mentored [X] PMs and established product development best practices across the organization",
+            ],
+            "learning": [
+                "Seek leadership opportunities: lead a cross-functional initiative or mentor junior PMs",
+                "Take a strategic leadership course (Reforge, Product Faculty, or similar)",
+                "Document and quantify your leadership impact with measurable outcomes",
             ],
         },
         "Domain Fit": {
@@ -674,6 +696,11 @@ def _build_resume_suggestions(breakdown: list[dict], fit: int) -> list[dict]:
                 "Designed workflow automation tools that reduced manual processes by [X%] across [X] teams",
                 "Owned infrastructure product roadmap powering [X]M+ API calls per day",
             ],
+            "learning": [
+                "Study platform/infrastructure product patterns (APIs, SDKs, developer experience)",
+                "Build or contribute to a workflow automation or agentic AI project",
+                "Learn enterprise product concepts: multi-tenancy, RBAC, compliance, and SLAs",
+            ],
         },
         "Industry Verticals": {
             "keywords": "real estate, proptech, healthcare, health tech, clinical",
@@ -681,6 +708,11 @@ def _build_resume_suggestions(breakdown: list[dict], fit: int) -> list[dict]:
                 "Launched [healthcare/real estate] product vertical generating [$X]M in first-year revenue",
                 "Built HIPAA-compliant / proptech solutions used by [X]+ [providers/agents]",
                 "Developed domain-specific features for [industry] reducing customer onboarding time by [X%]",
+            ],
+            "learning": [
+                "Research the target industry's regulations, workflows, and pain points",
+                "Network with domain experts and attend industry-specific conferences or webinars",
+                "Build a side project or case study targeting the specific vertical",
             ],
         },
     }
@@ -697,6 +729,7 @@ def _build_resume_suggestions(breakdown: list[dict], fit: int) -> list[dict]:
                 "status": "missing",
                 "keywords": tip["keywords"],
                 "bullets": tip["bullets"],
+                "learning": tip.get("learning", []),
             })
         elif b["weight"] < b["maxPts"]:
             # Partially matched — can earn more points
@@ -707,6 +740,7 @@ def _build_resume_suggestions(breakdown: list[dict], fit: int) -> list[dict]:
                 "status": "partial",
                 "keywords": tip["keywords"],
                 "bullets": tip["bullets"],
+                "learning": tip.get("learning", []),
             })
     return suggestions
 
@@ -765,7 +799,7 @@ def generate_html_dashboard(conn: sqlite3.Connection):
             "lastSeen": job["last_seen_at"][:10],
             "breakdown": breakdown,
             "suggestions": suggestions,
-            "descHtml": (job.get("description_html") or "")[:5000],
+            "descHtml": (job.get("description_html") or "")[:8000],
             "description": (job["description"] or "")[:3000],
         })
 
@@ -890,7 +924,8 @@ background:transparent;color:var(--red);transition:all .15s;margin-left:auto;whi
 display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:14px}}
 
 .card{{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
-padding:16px;box-shadow:var(--shadow);transition:.15s;position:relative;cursor:pointer}}
+padding:16px;box-shadow:var(--shadow);transition:.15s;position:relative;cursor:pointer;
+display:flex;flex-direction:column}}
 .card:hover{{box-shadow:0 4px 12px rgba(0,0,0,.1);transform:translateY(-1px)}}
 .card-header{{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}}
 .card-title{{font-size:15px;font-weight:600;flex:1}}
@@ -901,7 +936,8 @@ padding:2px 6px;border-radius:4px;line-height:1}}
 .card-dismiss:hover{{background:var(--border);color:var(--text)}}
 .card-meta{{font-size:13px;color:var(--muted);margin:4px 0 6px}}
 .card-meta .company{{font-weight:600;color:var(--text)}}
-.card-salary{{font-size:12px;font-weight:600;color:var(--green);margin-bottom:8px}}
+.card-salary{{font-size:12px;font-weight:600;color:var(--green);margin-bottom:8px;min-height:18px}}
+.no-salary{{color:var(--muted);font-weight:400;font-size:11px}}
 .tier-tag{{display:inline-block;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600;margin-left:6px}}
 .tier-tag.t-today{{background:var(--red-bg);color:var(--red)}}
 .tier-tag.t-week{{background:var(--amber-bg);color:var(--amber)}}
@@ -923,7 +959,7 @@ padding:2px 6px;border-radius:4px;line-height:1}}
 .bar-fill.fit-mid{{background:var(--blue)}}
 .bar-fill.fit-low{{background:var(--amber)}}
 .bar-fill.fit-vlow{{background:var(--red)}}
-.card-foot{{display:flex;justify-content:space-between;align-items:center;margin-top:10px}}
+.card-foot{{display:flex;justify-content:space-between;align-items:center;margin-top:auto;padding-top:10px}}
 .card-date{{font-size:11px;color:var(--muted)}}
 .status-select{{padding:4px 8px;font-size:11px;border-radius:6px;border:1px solid var(--border);
 background:var(--card);color:var(--text)}}
@@ -956,7 +992,7 @@ cursor:pointer;color:var(--muted);line-height:1}}
 .breakdown-table .match{{color:var(--green);font-weight:600}}
 .breakdown-table .no-match{{color:var(--red);font-weight:600}}
 .modal .m-desc{{font-size:13px;line-height:1.7;color:var(--text);margin:8px 0;
-max-height:300px;overflow-y:auto;padding:14px;background:var(--bg);border-radius:var(--radius)}}
+max-height:400px;overflow-y:auto;padding:14px;background:var(--bg);border-radius:var(--radius)}}
 .modal .m-desc h1,.modal .m-desc h2,.modal .m-desc h3{{font-size:15px;margin:12px 0 6px;color:var(--text)}}
 .modal .m-desc p{{margin:6px 0}}
 .modal .m-desc ul,.modal .m-desc ol{{margin:6px 0;padding-left:20px}}
@@ -972,9 +1008,31 @@ padding:16px;margin:12px 0}}
 .gap-keywords{{font-size:12px;color:var(--accent);margin-bottom:6px}}
 .gap-bullets{{font-size:12px;color:var(--muted);padding-left:16px}}
 .gap-bullets li{{margin:3px 0}}
-.btn-resume{{margin-top:10px;padding:8px 16px;background:var(--red);color:#fff;border:none;
+.gap-sub-label{{font-size:11px;font-weight:600;color:var(--text);margin:8px 0 2px;text-transform:uppercase;letter-spacing:.3px}}
+.gap-learn-label{{color:var(--accent)}}
+.gap-learn{{font-size:12px;color:var(--accent);padding-left:16px;list-style:none}}
+.gap-learn li{{margin:3px 0}}
+.gap-learn li::before{{content:"→ ";color:var(--accent)}}
+.gap-actions{{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}}
+.btn-preview{{padding:8px 16px;background:var(--card);color:var(--accent);border:1px solid var(--accent);
+border-radius:var(--radius);font-weight:600;font-size:13px;cursor:pointer}}
+.btn-preview:hover{{background:var(--accent);color:#fff}}
+.btn-resume{{padding:8px 16px;background:var(--red);color:#fff;border:none;
 border-radius:var(--radius);font-weight:600;font-size:13px;cursor:pointer}}
 .btn-resume:hover{{opacity:.9}}
+/* Resume changes preview */
+.resume-preview{{margin-top:14px;padding:14px;background:var(--bg);border-radius:var(--radius);
+border:1px solid var(--border);font-size:12px}}
+.resume-preview h5{{font-size:13px;margin:0 0 10px;color:var(--text)}}
+.rp-section{{margin:10px 0}}
+.rp-section-title{{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;
+letter-spacing:.3px;margin-bottom:4px}}
+.rp-change{{padding:4px 0;display:flex;gap:6px;align-items:flex-start}}
+.rp-arrow{{font-weight:700;font-size:13px;flex-shrink:0;width:16px;text-align:center}}
+.rp-arrow.up{{color:var(--green)}}
+.rp-arrow.same{{color:var(--muted)}}
+.rp-text{{color:var(--text);line-height:1.4}}
+.rp-score{{color:var(--muted);font-size:11px;white-space:nowrap}}
 
 /* Resume upload modal */
 .resume-overlay{{display:none;position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,.55);
@@ -1156,7 +1214,7 @@ function statusClass(st){{return st?'s-'+st.toLowerCase():''}}
 function renderCard(j){{
 const s=state.statuses[j.id]||'New';
 const hasNote=state.notes[j.id]?'<span class="has-note"></span>':'';
-const salaryHtml=j.salary?`<div class="card-salary">${{esc(j.salary)}}</div>`:'';
+const salaryHtml='<div class="card-salary">'+(j.salary?esc(j.salary):'<span class="no-salary">Salary not listed</span>')+'</div>';
 return `<div class="card" data-id="${{esc(j.id)}}" onclick="openModal('${{esc(j.id)}}')">
 <div class="card-header">
 <div class="card-title"><a href="${{esc(j.url)}}" target="_blank" onclick="event.stopPropagation()">${{esc(j.title)}}</a>
@@ -1309,20 +1367,40 @@ return '<tr><td>'+esc(b.bucket)+'</td><td>'+b.weight+'/'+b.maxPts+' pts</td><td>
 /* Gap analysis + resume tips */
 const gapEl=document.getElementById('mGap');
 if(j.fit<75 && j.suggestions && j.suggestions.length>0){{
-let gh=`<div class="gap-section"><h4>Resume Gap Analysis (Fit: ${{j.fit}}/100)</h4>
-<p style="font-size:12px;margin-bottom:8px">You're missing these keyword categories. Add them to your resume to improve your match:</p>`;
+var gh='<div class="gap-section"><h4>Resume Gap Analysis (Fit: '+j.fit+'/100)</h4>';
+gh+='<p style="font-size:12px;margin-bottom:8px">Improve your match by addressing these keyword gaps:</p>';
 j.suggestions.forEach(function(s){{
 var label=s.status==='missing'?'MISSING':'NEEDS MORE';
+var labelColor=s.status==='missing'?'var(--red)':'var(--amber)';
 var bullets=s.bullets.map(function(b){{return '<li>'+esc(b)+'</li>'}}).join('');
-gh+='<div class="gap-item">'+
-'<div class="gap-item-head"><span style="color:var(--red)">'+label+':</span> '+esc(s.bucket)+' <span class="pts">(+'+s.weight+' pts available)</span></div>'+
-'<div class="gap-keywords">Add keywords: '+esc(s.keywords)+'</div>'+
-'<ul class="gap-bullets">'+bullets+'</ul></div>';
+gh+='<div class="gap-item">';
+gh+='<div class="gap-item-head"><span style="color:'+labelColor+'">'+label+':</span> '+esc(s.bucket)+' <span class="pts">(+'+s.weight+' pts available)</span></div>';
+gh+='<div class="gap-keywords">Add keywords: '+esc(s.keywords)+'</div>';
+gh+='<div class="gap-sub-label">Resume bullet suggestions:</div>';
+gh+='<ul class="gap-bullets">'+bullets+'</ul>';
+if(s.learning&&s.learning.length>0){{
+gh+='<div class="gap-sub-label gap-learn-label">Learning recommendations:</div>';
+gh+='<ul class="gap-learn">';
+s.learning.forEach(function(l){{gh+='<li>'+esc(l)+'</li>'}});
+gh+='</ul>';
+}}
+gh+='</div>';
 }});
-gh+=`<button class="btn-resume" onclick="downloadTailoredResume('${{esc(j.id)}}')">Generate Tailored Resume for This Role</button></div>`;
+gh+='<div class="gap-actions">';
+gh+='<button class="btn-preview" onclick="previewResumeChanges(\\''+esc(j.id)+'\\')">Preview Resume Changes</button>';
+gh+='<button class="btn-resume" onclick="downloadTailoredResume(\\''+esc(j.id)+'\\')">Generate Tailored Resume</button>';
+gh+='</div>';
+gh+='<div id="mResumePreview"></div>';
+gh+='</div>';
 gapEl.innerHTML=gh;
 }}else{{
-gapEl.innerHTML=j.fit>=75?'<p style="color:var(--green);font-size:13px;margin:8px 0;font-weight:600">Strong fit! Your profile matches well.</p>':'';
+var msg='';
+if(j.fit>=75)msg='<p style="color:var(--green);font-size:13px;margin:8px 0;font-weight:600">Strong fit! Your profile matches well.</p>';
+msg+='<div class="gap-actions" style="margin-top:10px">';
+msg+='<button class="btn-preview" onclick="previewResumeChanges(\\''+esc(j.id)+'\\')">Preview Resume Changes</button>';
+msg+='<button class="btn-resume" onclick="downloadTailoredResume(\\''+esc(j.id)+'\\')">Generate Tailored Resume</button>';
+msg+='</div><div id="mResumePreview"></div>';
+gapEl.innerHTML=msg;
 }}
 
 /* Description — render HTML if available, plain text otherwise */
@@ -1347,6 +1425,77 @@ var kws=jd.match(/\\b[a-z]{{3,}}\\b/g)||[];
 var unique=Array.from(new Set(kws));
 unique.forEach(function(w){{if(bl.indexOf(w)!==-1)score++}});
 return score;
+}}
+
+function previewResumeChanges(id){{
+var j=JOBS.find(function(x){{return x.id===id}});if(!j)return;
+var R=RESUME;
+var jd=(j.title+' '+j.description).toLowerCase();
+var el=document.getElementById('mResumePreview');
+
+/* Compute tailored tagline */
+var focusAreas=[];
+if(/\\bai\\b|\\bml\\b|\\bmachine.learn|\\bllm\\b|\\bgenerative/i.test(j.description))focusAreas.push('AI/ML');
+if(/\\bplatform\\b|\\binfrastructure\\b/i.test(j.description))focusAreas.push('Platform');
+if(/\\benterprise\\b/i.test(j.description))focusAreas.push('Enterprise');
+if(/\\bagent\\b|\\bagentic\\b/i.test(j.description))focusAreas.push('Agentic Systems');
+if(/\\bworkflow\\b|\\bautomation\\b/i.test(j.description))focusAreas.push('Workflow Automation');
+if(/\\bhealthcare\\b|\\bclinical\\b|\\bhealth/i.test(j.description))focusAreas.push('Healthcare');
+if(/\\breal.estate\\b|\\bproptech\\b/i.test(j.description))focusAreas.push('Real Estate');
+if(/\\bdata\\b|\\banalytics\\b/i.test(j.description))focusAreas.push('Data & Analytics');
+var newTagline=focusAreas.length>0?focusAreas.join('  |  ')+'  |  0-1 AI Product Strategy  |  RAG + Evals':R.tagline;
+var taglineChanged=newTagline!==R.tagline;
+
+/* Score and rank competencies */
+var compScored=R.competencies.map(function(c,i){{
+var cl=c.toLowerCase();var s=0;
+if(jd.indexOf(cl)!==-1)s+=10;
+cl.split(/\\s+/).forEach(function(w){{if(w.length>3&&jd.indexOf(w)!==-1)s+=2}});
+return {{text:c,origIdx:i,score:s}};
+}});
+compScored.sort(function(a,b){{return b.score-a.score}});
+
+/* Score bullets for first experience section (main role) */
+var mainExp=R.experience[0];
+var bulletScored=mainExp.bullets.map(function(b,i){{
+return {{text:b,origIdx:i,score:scoreBullet(b,j.description)}};
+}});
+bulletScored.sort(function(a,b){{return b.score-a.score}});
+
+/* Build preview HTML */
+var h='<div class="resume-preview"><h5>Resume Changes for This Role</h5>';
+
+/* Tagline */
+if(taglineChanged){{
+h+='<div class="rp-section"><div class="rp-section-title">Tagline Updated</div>';
+h+='<div class="rp-change"><span class="rp-arrow up">+</span><span class="rp-text">'+esc(newTagline)+'</span></div>';
+h+='<div class="rp-change"><span class="rp-arrow same">-</span><span class="rp-text" style="color:var(--muted);text-decoration:line-through">'+esc(R.tagline)+'</span></div>';
+h+='</div>';
+}}
+
+/* Top competencies moved up */
+h+='<div class="rp-section"><div class="rp-section-title">Competencies Reordered (top 5)</div>';
+compScored.slice(0,5).forEach(function(c,newIdx){{
+var moved=c.origIdx>newIdx;
+var arrow=moved?'<span class="rp-arrow up">&#8593;</span>':'<span class="rp-arrow same">=</span>';
+var note=moved?' (was #'+(c.origIdx+1)+', now #'+(newIdx+1)+')':' (stayed #'+(newIdx+1)+')';
+h+='<div class="rp-change">'+arrow+'<span class="rp-text">'+esc(c.text)+'<span class="rp-score">'+note+'</span></span></div>';
+}});
+h+='</div>';
+
+/* Top promoted bullets */
+h+='<div class="rp-section"><div class="rp-section-title">Bullet Points Reordered — '+esc(mainExp.company.split('(')[0].trim())+'</div>';
+bulletScored.slice(0,5).forEach(function(b,newIdx){{
+var moved=b.origIdx>newIdx;
+var arrow=moved?'<span class="rp-arrow up">&#8593;</span>':'<span class="rp-arrow same">=</span>';
+var snippet=b.text.length>120?b.text.substring(0,120)+'...':b.text;
+h+='<div class="rp-change">'+arrow+'<span class="rp-text">'+esc(snippet)+' <span class="rp-score">('+b.score+' keyword matches)</span></span></div>';
+}});
+h+='</div>';
+
+h+='</div>';
+el.innerHTML=h;
+el.scrollIntoView({{behavior:'smooth',block:'nearest'}});
 }}
 
 function downloadTailoredResume(id){{

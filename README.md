@@ -2,6 +2,10 @@
 
 A zero-dependency Python tool that scrapes PM and AI PM job postings from 65+ tech companies, scores them on freshness and fit, and generates an interactive HTML dashboard you can open in any browser.
 
+![Dashboard](screenshots/dashboard.png)
+
+![Job Detail Modal](screenshots/modal.png)
+
 ## Quick Start
 
 ```bash
